@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TASKPLAN — Round loop + escape payoff</title>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1b1f26;
+    --ink: #dde3ea;
+    --muted: #98a3b0;
+    --rule: #2c333d;
+    --accent: #78e69a;
+    --warn: #ffb454;
+    --danger: #ff7a6b;
+    --code-bg: #11141a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f8fa; --panel: #fff; --ink: #1c2028; --muted: #5d6773;
+      --rule: #e2e6eb; --accent: #1f8f4d; --warn: #a86400; --danger: #c0392b;
+      --code-bg: #f0f2f5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 3rem 1.5rem 6rem;
+    background: var(--bg); color: var(--ink);
+    font: 16px/1.65 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .25rem; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0 0 2.5rem; font-size: 1.05rem; }
+  h2 {
+    font-size: 1.25rem; margin: 3rem 0 1rem; padding-bottom: .5rem;
+    border-bottom: 1px solid var(--rule); letter-spacing: -.01em;
+  }
+  h3 { font-size: 1rem; margin: 1.75rem 0 .5rem; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  p, li { margin: .6rem 0; }
+  ul, ol { padding-left: 1.3rem; }
+  code {
+    font: .875em ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--code-bg); padding: .12em .4em; border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 1rem; overflow-x: auto; margin: 1rem 0;
+  }
+  pre code { background: none; padding: 0; font-size: .82rem; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }
+  th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+  .wrap { overflow-x: auto; }
+  .card {
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 1.1rem 1.3rem; margin: 1.25rem 0;
+  }
+  .card.danger { border-left: 3px solid var(--danger); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.ok { border-left: 3px solid var(--accent); }
+  .card h4 { margin: 0 0 .5rem; font-size: .95rem; letter-spacing: .01em; }
+  .card.danger h4 { color: var(--danger); }
+  .card.warn h4 { color: var(--warn); }
+  .card.ok h4 { color: var(--accent); }
+  .step { display: flex; gap: .7rem; align-items: baseline; }
+  .num {
+    flex: 0 0 auto; font: 600 .78rem ui-monospace, monospace;
+    color: var(--bg); background: var(--muted);
+    border-radius: 4px; padding: .15rem .45rem;
+  }
+  .file {
+    font: .82rem ui-monospace, monospace; color: var(--accent);
+    display: block; margin: .35rem 0 .6rem; word-break: break-all;
+  }
+  .check { font-size: .9rem; color: var(--muted); border-left: 2px solid var(--rule);
+           padding-left: .8rem; margin: .8rem 0; }
+  .check b { color: var(--ink); font-weight: 600; }
+  .timeline { font: .82rem/1.7 ui-monospace, monospace; background: var(--code-bg);
+              border: 1px solid var(--rule); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+  ol.dod { counter-reset: d; list-style: none; padding-left: 0; }
+  ol.dod li { counter-increment: d; padding-left: 2rem; position: relative; margin: .7rem 0; }
+  ol.dod li::before {
+    content: counter(d); position: absolute; left: 0; top: .1rem;
+    font: 600 .75rem ui-monospace, monospace; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 4px; padding: .05rem .35rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>TASKPLAN — Round loop + escape payoff</h1>
+<p class="sub">Turning the escape into a real ending, and RUN IT BACK into a real new round.</p>
+
+<h2>Context</h2>
+<p>Reaching the evac pad at the maze centre currently ends in a hard cut: the character is anchored mid-stride and a static panel appears. There is no payoff beat, and pressing RUN IT BACK drops you into the <em>same</em> maze at the <em>same</em> spawn, so there is no reason to run it again.</p>
+<p>This plan does three things:</p>
+<ol>
+  <li><b>A cinematic escape.</b> The camera unhooks and pulls up and back over the maze you just crossed, hunters converging on the pad too late, then the win panel fades in over the shot.</li>
+  <li><b>A real new round.</b> RUN IT BACK regenerates the maze with a new seed, so the walls change, and drops you at a new random spawn always far from the centre.</li>
+  <li><b>A personal best</b>, persisted through PlayerData, with a NEW BEST stamp.</li>
+</ol>
+
+<div class="timeline">touch pad → character freezes, drone fades to silence
+  ↓ 0.0s  camera unhooks from the character
+  ↓ 1.8s  rises + pulls back over the maze (Quart ease-out)
+  ↓ 0.5s  hold — hunters sprint in, too late
+  ↓       ESCAPED panel fades in over the shot</div>
+
+<div class="card danger">
+  <h4>The one thing that will bite you</h4>
+  <p><code>MazeService</code> rebuilds via <code>mazeFolder:ClearAllChildren()</code>. That destroys <code>ExitGate</code> <b>and</b> the <code>EscapeZone</code> part <code>EscapeService</code> parented in there. <code>EscapeService</code> captured <code>exitGate</code> as a local at <code>Start()</code> and wired <code>exitGate.Touched</code> once — so after a rebuild those point at destroyed instances and <b>the win condition silently stops working</b>.</p>
+  <p><code>workspace.MazeReady</code> cannot solve this: it is set <code>true</code> once and never cleared, so its changed-signal will not fire again. The fix used throughout is a new monotonic counter <code>workspace.MazeGeneration</code>, incremented on every build including the first. <b>Do not invent a second mechanism.</b></p>
+</div>
+
+<h2>Out of scope / Do NOT</h2>
+<ul>
+  <li><b>Do NOT</b> give each player their own maze. A restart is a <b>server-wide new round</b>. Instancing is out of scope.</li>
+  <li><b>Do NOT</b> touch <code>SprintController.client.luau</code> or <code>CROUCH_ANIMATION_ID</code> — crouch is a separate open thread.</li>
+  <li><b>Do NOT</b> touch the duck constants in <code>HunterService</code> (<code>DUCK_*</code>, <code>EYE_*</code>). Eye placement was measured in Studio; do not "tidy" it.</li>
+  <li><b>Do NOT</b> change <code>RADII</code>, <code>SECTORS</code>, <code>BANDS</code>, <code>WALL_H</code>, <code>WALL_T</code>, <code>FLOOR_Y</code>. Only the passage pattern varies per seed.</li>
+  <li><b>Do NOT</b> clear <code>workspace.MazeReady</code> — services <code>:Wait()</code> on it and would deadlock. It stays a one-way latch.</li>
+  <li><b>Do NOT</b> add Studio assets. Everything here is code.</li>
+  <li><b>Do NOT</b> reassign <code>profile.Data</code>. Persist only via <code>PlayerDataService.SetValue</code>.</li>
+</ul>
+
+<h2>Steps</h2>
+
+<h3><span class="step"><span class="num">1</span> Extract a re-runnable rebuild(seed)</span></h3>
+<span class="file">src/features/Maze/MazeService.server.luau</span>
+<p>All generation is inline in <code>Start()</code> today. Move the body into a module-level function; <code>Start()</code> becomes a two-liner.</p>
+<div class="wrap"><pre><code>function MazeService.rebuild(seed: number)
+    local rng = Random.new(seed)
+    -- ... existing generation body, unchanged ...
+    workspace:SetAttribute("MazeSeed", seed)
+    workspace:SetAttribute("MazeGeneration",
+        (workspace:GetAttribute("MazeGeneration") or 0) + 1)
+end
+
+function MazeService.Start()
+    MazeService.rebuild(Constants.SEED)
+    workspace:SetAttribute("MazeReady", true)
+end</code></pre></div>
+<p><b>Account for:</b> increment <code>MazeGeneration</code> <em>last</em>, after <code>MazeNav.ready = true</code>. Delete the separate unseeded <code>spawnRng</code> so one seed fully determines the round. Keep <code>ClearAllChildren()</code> — it is what makes rebuild work.</p>
+<p class="check"><b>Check:</b> <code>lune run tools/split</code> clean; on the server <code>print(workspace:GetAttribute("MazeGeneration"))</code> → <code>1</code>.</p>
+
+<h3><span class="step"><span class="num">2</span> Spawn far from the centre</span></h3>
+<span class="file">src/features/Maze/MazeService.server.luau — inside rebuild</span>
+<p>The band is currently <code>rng:NextInteger(3, max(3, BANDS - 2))</code>, which can land mid-maze. A run should always be a long haul inward.</p>
+<div class="wrap"><pre><code>local SPAWN_MIN_BAND = BANDS - 2 -- 10
+local spawnBand = rng:NextInteger(SPAWN_MIN_BAND, BANDS) -- 10..12</code></pre></div>
+<p>With <code>BANDS = 12</code> and <code>RADII[13] = 534</code>, that is roughly radius 450–534. Keep the existing sector pick, mid-radius positioning, <code>y = 4</code> and <code>lookAt</code> toward centre.</p>
+<p class="check"><b>Check:</b> spawn distance from origin <b>&gt; 430</b> on every rebuild, across 5 different seeds.</p>
+
+<h3><span class="step"><span class="num">3</span> Re-wire EscapeService on rebuild</span></h3>
+<span class="file">src/features/Maze/EscapeService.server.luau</span>
+<p>The footgun step. Extract zone creation + gate wiring into a re-runnable <code>bindToMaze()</code>; move the <code>Touched</code> body into a named <code>onGateTouched(hit)</code>.</p>
+<div class="wrap"><pre><code>bindToMaze()
+workspace:GetAttributeChangedSignal("MazeGeneration"):Connect(bindToMaze)</code></pre></div>
+<p><b>Account for:</b> disconnect the old <code>Touched</code> before reconnecting or you leak one per round. <code>spawnLocation</code> may stay captured — it is repositioned in place, not recreated.</p>
+<p class="check"><b>Check:</b> call <code>MazeService.rebuild(2002)</code>, walk onto the new pad — <code>Escaped</code> must still fire. Before this step it will not.</p>
+
+<h3><span class="step"><span class="num">4</span> Restart triggers a new round</span></h3>
+<span class="file">src/features/Maze/EscapeService.server.luau — Net.Restart.listen</span>
+<div class="wrap"><pre><code>MazeService.rebuild(Random.new(os.clock() * 1000):NextInteger(1, 2 ^ 31 - 1))
+
+for _, plr in Players:GetPlayers() do
+    resetState(plr)
+    plr:SetAttribute("Checkpoint", nil)
+    plr:SetAttribute("CheckpointRing", nil)
+    plr:SetAttribute("SafeUntil", nil)
+    local character = plr.Character
+    if not character then continue end
+    setCharacterAnchored(character, false)
+    character:PivotTo(spawnLocation.CFrame + Vector3.new(0, 3, 0))
+end</code></pre></div>
+<div class="card warn">
+  <h4>Clearing Checkpoint is required, not optional</h4>
+  <p>It stores a raw world-space <code>CFrame</code>. After a re-carve that exact point may sit inside a new wall — and <code>HunterService.catchPlayer</code> teleports caught players straight to it.</p>
+</div>
+<p class="check"><b>Check:</b> after RUN IT BACK the walls visibly differ, you are far from centre, timer reset, and <code>MazeSeed</code> differs from last round.</p>
+
+<h3><span class="step"><span class="num">5</span> Refresh Hunter + Checkpoint on rebuild</span></h3>
+<span class="file">src/features/Hunter/HunterService.server.luau · src/features/Checkpoint/CheckpointService.server.luau</span>
+<p>Hunter snapshots <code>cellKeys</code> and <code>maxBand</code> once at <code>Start()</code>. Hoist both to upvalues behind a <code>refreshNav()</code>, call it on <code>MazeGeneration</code> change, and re-home every hunter via <code>farSpawn</code>. Checkpoint just needs <code>table.clear(deepest)</code> so players re-baseline.</p>
+<p><b>Account for:</b> per-hunter <code>lastKnownCell</code> / <code>wanderTarget</code> are closure locals; re-homing the model is enough, since <code>stepToward</code> re-reads <code>MazeNav</code> live and re-paths within one <code>REPATH</code> tick (0.7s).</p>
+<p class="check"><b>Check:</b> rebuild mid-run with hunters active — they resume within ~1s and never path through walls.</p>
+
+<h3><span class="step"><span class="num">6</span> Persist a personal best</span></h3>
+<span class="file">src/features/Maze/PlayerData.luau (new) · Net.luau · EscapeService.server.luau</span>
+<div class="wrap"><pre><code>return function(PlayerData)
+    PlayerData.registerTemplate("Ringfall", { BestTimeSeconds = 0 })
+end</code></pre></div>
+<p>Use <code>0</code> for "no best yet" — ProfileStore templates do not keep nil keys. Extend the <code>Escaped</code> packet with <code>bestSeconds: float32</code> and <code>isNewBest: bool</code>, and send it <em>after</em> <code>SetValue</code> so payload and replica agree. Guard <code>data</code> being nil while the profile loads.</p>
+<p class="check"><b>Check:</b> escape twice, second slower — NEW BEST only on the first. Rejoin; the best survives.</p>
+
+<h3><span class="step"><span class="num">7</span> Win screen: best time + NEW BEST</span></h3>
+<span class="file">src/features/Maze/WinScreen.ui.luau · WinScreen.story.luau · UIController.client.luau</span>
+<div class="wrap"><table>
+  <tr><th>Condition</th><th>Row shown</th><th>Style</th></tr>
+  <tr><td><code>isNewBest</code></td><td><code>NEW BEST</code></td><td>28px, Heavy, <code>rgb(120,230,150)</code></td></tr>
+  <tr><td><code>bestSeconds &gt; 0</code></td><td><code>BEST m:ss.d</code></td><td>24px, <code>rgb(170,180,190)</code></td></tr>
+  <tr><td>neither</td><td><code>nil</code></td><td>—</td></tr>
+</table></div>
+<p>Grow <code>PANEL_SIZE</code> from <code>520×320</code> to <code>520×380</code> to fit the extra row.</p>
+<div class="card warn">
+  <h4>WinScreen is a view — keep it dumb</h4>
+  <p>No networking, no persistence, no <code>os.clock</code>. Everything arrives through props. <code>tools/check-views</code> enforces this and will fail the build.</p>
+</div>
+<p class="check"><b>Check:</b> in UI Labs, toggle <code>isNewBest</code> — both states render with no layout jump or clipping.</p>
+
+<h3><span class="step"><span class="num">8</span> The cinematic</span></h3>
+<span class="file">src/features/Maze/EscapeCinematicController.client.luau (new)</span>
+<div class="wrap"><table>
+  <tr><th>Constant</th><th>Value</th><th>Meaning</th></tr>
+  <tr><td><code>RISE</code></td><td><code>Vector3.new(0, 220, 260)</code></td><td>End offset from the character</td></tr>
+  <tr><td><code>FLIGHT_TIME</code></td><td><code>1.8</code></td><td>Quart ease-out</td></tr>
+  <tr><td><code>HOLD_TIME</code></td><td><code>0.5</code></td><td>Settle before the panel</td></tr>
+</table></div>
+<p>Fade hunter drones locally to 0 over 0.3s, set <code>CameraType = Scriptable</code>, tween 0→1 setting <code>CFrame = lookAt(startPos:Lerp(endPos, t), charPos)</code>, hold, return. <code>stop()</code> restores <code>Custom</code> and drone volume 0.8.</p>
+<div class="card danger">
+  <h4>LookBackController will fight you for the camera</h4>
+  <p>It writes <code>camera.CFrame</code> every frame at <code>Camera.Value + 1</code>. It bails on <code>Caught</code> but <b>not</b> on escaped. Add <code>player:GetAttribute("Escaped")</code> to that same early-return in <code>LookBackController.client.luau</code> — a one-line change.</p>
+</div>
+<p><b>Account for:</b> the character is already anchored server-side, so do not anchor again. Re-check <code>player.Character</code> each tween step and abort to <code>stop()</code> if it vanishes.</p>
+<p class="check"><b>Check:</b> smooth rise, maze visible below, audio fades, panel only after the shot settles. RUN IT BACK snaps the camera back with no drift.</p>
+
+<h3><span class="step"><span class="num">9</span> Hunters converge on the pad</span></h3>
+<span class="file">src/features/Maze/EscapeService.server.luau · src/features/Hunter/HunterService.server.luau</span>
+<p>Escape sets <code>workspace.EvacAlert = os.clock()</code>. Hunters gain a branch <em>before</em> CHASE: for 4 seconds after any escape, sprint at <code>MAX_SPEED</code> toward <code>MazeNav.nearestCell(Vector3.zero)</code>. Loose coupling through an attribute, matching the existing <code>Crouched</code> / <code>Escaped</code> pattern.</p>
+<p class="check"><b>Check:</b> escape with a hunter a few rings out — during the pull-back it visibly moves toward the pad.</p>
+
+<h3><span class="step"><span class="num">10</span> Docs</span></h3>
+<p>Update <code>docs/game/Maze.md</code> (per-round seed, the <code>MazeGeneration</code> re-wire contract, far-spawn rule, the rebuild footgun) and <code>docs/game/Hunter.md</code> (<code>EvacAlert</code>, nav refresh). Create <code>docs/game/Escape.md</code> (round state machine, packet fields, cinematic timings, storage key). Index all of it.</p>
+
+<h2>Definition of Done</h2>
+<div class="card ok">
+<ol class="dod">
+  <li><code>split</code>, <code>check-views</code> and <code>check-framework-boundary</code> all pass.</li>
+  <li>Escaping plays the camera flight, then the panel appears over it.</li>
+  <li>RUN IT BACK gives a <b>visibly different layout</b> and a spawn &gt;430 studs from centre, across at least 5 consecutive rounds.</li>
+  <li>The win condition still fires on rounds 2–5 — the regression Step 3 exists to prevent. <b>Test explicitly, not just round 1.</b></li>
+  <li>Hunters resume chasing within ~1s of a rebuild and do not path through walls.</li>
+  <li>A caught player after a rebuild respawns somewhere valid, never inside a wall.</li>
+  <li>Personal best survives a rejoin; NEW BEST shows only on an improvement.</li>
+  <li>Camera returns to normal third person after restart, and Q still works with movement unaffected.</li>
+  <li>No debug <code>print</code> statements remain.</li>
+</ol>
+</div>
+
+</main>
+</body>
+</html>
