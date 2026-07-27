@@ -152,7 +152,7 @@ end</code></pre></div>
 <div class="wrap"><pre><code>local SPAWN_MIN_BAND = BANDS - 2 -- 10
 local spawnBand = rng:NextInteger(SPAWN_MIN_BAND, BANDS) -- 10..12</code></pre></div>
 <p>With <code>BANDS = 12</code> and <code>RADII[13] = 534</code>, that is roughly radius 450–534. Keep the existing sector pick, mid-radius positioning, <code>y = 4</code> and <code>lookAt</code> toward centre.</p>
-<p class="check"><b>Check:</b> spawn distance from origin <b>&gt; 430</b> on every rebuild, across 5 different seeds.</p>
+<p class="check"><b>Check:</b> spawn distance from origin <b>≥ 429</b> on every rebuild (band mid-radii are 429, 471, 513), across 5 different seeds.</p>
 
 <h3><span class="step"><span class="num">3</span> Re-wire EscapeService on rebuild</span></h3>
 <span class="file">src/features/Maze/EscapeService.server.luau</span>
@@ -240,7 +240,7 @@ end</code></pre></div>
 <ol class="dod">
   <li><code>split</code>, <code>check-views</code> and <code>check-framework-boundary</code> all pass.</li>
   <li>Escaping plays the camera flight, then the panel appears over it.</li>
-  <li>RUN IT BACK gives a <b>visibly different layout</b> and a spawn &gt;430 studs from centre, across at least 5 consecutive rounds.</li>
+  <li>RUN IT BACK gives a <b>visibly different layout</b> and a spawn ≥429 studs from centre, across at least 5 consecutive rounds.</li>
   <li>The win condition still fires on rounds 2–5 — the regression Step 3 exists to prevent. <b>Test explicitly, not just round 1.</b></li>
   <li>Hunters resume chasing within ~1s of a rebuild and do not path through walls.</li>
   <li>A caught player after a rebuild respawns somewhere valid, never inside a wall.</li>

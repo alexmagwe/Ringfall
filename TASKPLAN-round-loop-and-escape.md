@@ -130,7 +130,7 @@ inline.
 local sl = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
 print((Vector3.new(sl.Position.X, 0, sl.Position.Z)).Magnitude)
 ```
-→ a value **greater than 430** on every rebuild. Rebuild 5 times with different
+→ a value of **at least 429** on every rebuild (spawns land at band mid-radius: 429, 471 or 513). Rebuild 5 times with different
 seeds and confirm it never drops below that.
 
 ---
@@ -527,7 +527,7 @@ All must be true. Stop when they are.
    `lune run tools/check-framework-boundary` all pass.
 2. Escaping plays the camera flight, then the panel appears over it.
 3. RUN IT BACK produces a **visibly different wall layout** and a spawn more than
-   430 studs from the centre, every time, across at least 5 consecutive rounds.
+   429 studs from the centre, every time, across at least 5 consecutive rounds.
 4. The win condition still fires on rounds 2, 3, 4 and 5 — i.e. `EscapeService`
    re-bound to the new `ExitGate` (this is the regression Step 3 exists to
    prevent; test it explicitly, not just on round 1).
