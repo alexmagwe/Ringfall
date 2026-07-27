@@ -22,15 +22,32 @@ function MazeNav.bandOf(cellKey: number): number
 	return cellKey // 1000
 end
 
--- District index of a band: 0 = hub (band 0), 1 = inner (bands 1-4), 2 = middle
--- (bands 5-8), 3 = outer (bands 9-12). Shared here (not duplicated per-file)
--- because both MazeService (carving/gates) and CheckpointService (respawn
--- tracking) need the exact same mapping.
+-- Band ranges per district, inner -> outer. THE single source of truth for the
+-- district layout: MazeService carves and gates off this, CheckpointService and
+-- the compass read districts through `districtOf`.
+--
+-- Deliberately NOT four bands each. Circumference grows with radius, so equal
+-- ring counts give wildly unequal search areas — at 4/4/4 the outer district
+-- held 192 cells against the inner's 54, meaning the district you solve first
+-- (no compass yet, mechanic not yet learned) was ~4x the work of the one you
+-- solve last. 6/3/3 bands gives ~102/120/144 cells: still funnelling inward,
+-- but the outer district is 1.4x the inner rather than 3.6x.
+local DISTRICT_BANDS = { { 1, 6 }, { 7, 9 }, { 10, 12 } }
+MazeNav.DISTRICT_BANDS = DISTRICT_BANDS
+
+-- District index of a band: 0 = hub (band 0), then 1 = inner .. 3 = outer.
+-- Shared here (not duplicated per-file) because MazeService (carving/gates) and
+-- CheckpointService (respawn tracking) need the exact same mapping.
 function MazeNav.districtOf(band: number): number
 	if band == 0 then
 		return 0
 	end
-	return math.floor((band - 1) / 4) + 1
+	for i, range in DISTRICT_BANDS do
+		if band >= range[1] and band <= range[2] then
+			return i
+		end
+	end
+	return #DISTRICT_BANDS
 end
 
 -- Outermost band index in the current maze (0 if empty).

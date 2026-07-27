@@ -23,21 +23,40 @@ searching the whole ring for that one opening — getting caught costs you the
 district you were solving, not a few seconds of corridor (see
 [Checkpoint.md](Checkpoint.md)).
 
-| District | Bands | Enters via gate at |
-| -------- | ----- | ------------------ |
-| OUTER (3) | 9–12 | — (spawn here) |
-| MIDDLE (2) | 5–8 | `RADII[9]` = 366 |
-| INNER (1) | 1–4 | `RADII[5]` = 198 |
-| HUB (0) | 0 (the exit pad) | `RADII[1]` = 30 |
+| District | Bands | Cells | Enters via gate at |
+| -------- | ----- | ----- | ------------------ |
+| OUTER (3) | 10–12 | 144 | — (spawn here) |
+| MIDDLE (2) | 7–9 | 120 | `RADII[10]` = 408 |
+| INNER (1) | 1–6 | 102 | `RADII[7]` = 282 |
+| HUB (0) | 0 (the exit pad) | 1 | `RADII[1]` = 30 |
 
-`MazeNav.districtOf(band)` is the one place this mapping lives — band 0 is
-district 0, otherwise `math.floor((band - 1) / 4) + 1`. Both `MazeService`
-(carving, gates) and `CheckpointService` (respawn tracking) require it from
-there rather than each keeping their own copy.
+**The districts deliberately do NOT hold equal ring counts.** Circumference grows
+with radius, so equal rings give wildly unequal search areas: an even 4/4/4 split
+put 192 cells in the outer district against 54 in the inner — meaning the
+district you solve *first*, with no compass and not yet knowing gates exist, was
+~4× the work of the one you solve last with both. That is an inverted difficulty
+curve, and the outer district is exactly where a new player would quit. 6/3/3
+bands gives 144/120/102 — still funnelling inward, but 1.4× rather than 3.6×.
 
-The three gate boundaries, each `{ outerBand, innerBand }`: `{9, 8}`, `{5, 4}`,
-`{1, 0}`. The first two boundaries are 1:1 on sector counts
-(`SECTORS[9]=SECTORS[8]=48`, `SECTORS[5]=SECTORS[4]=24`); the third is the hub,
+The inner district is correspondingly *deeper* in radius (252 studs vs 126) since
+its rings are narrow in cell terms — it reads as a long descent rather than a
+wide sweep, which suits the approach to the exit.
+
+`MazeNav.DISTRICT_BANDS` is the single source of truth, and
+`MazeNav.districtOf(band)` derives from it by lookup (not arithmetic — the groups
+are uneven). `MazeService` reads the ranges from there for carving, and derives
+`GATE_BOUNDARIES` from them (each district's gate sits at its innermost band,
+crossing into the band below) so a layout change can't strand a gate mid-district.
+`CheckpointService` and the compass go through `districtOf`.
+
+**If you change `DISTRICT_BANDS`, also update the Compass `minBand`/`maxBand` in
+`Pickups/Constants.luau`** — it is pinned to the OUTER range so the compass is
+always reachable *before* the first gate, and nothing enforces that link
+automatically.
+
+The three gate boundaries, each `{ outerBand, innerBand }`: `{10, 9}`, `{7, 6}`,
+`{1, 0}`. The first two are 1:1 on sector counts
+(`SECTORS[10]=SECTORS[9]=48`, `SECTORS[7]=SECTORS[6]=24`); the third is the hub,
 where all six `(1,s)` cells fold onto the single `(0,0)` cell.
 
 ### Carve-per-district, not carve-then-seal

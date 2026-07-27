@@ -29,7 +29,11 @@ return {
 			model = "Compass (by Artem Goyko)",
 			count = 1,
 			color = Color3.fromRGB(80, 200, 255),
-			minBand = 9,
+			-- Must match the OUTER district in MazeNav.DISTRICT_BANDS (10-12). If
+			-- that layout changes, change this too — a compass spawning a band
+			-- too far in would sit past the first gate, i.e. unreachable until
+			-- after the player already needed it.
+			minBand = 10,
 			maxBand = 12,
 			minSpawnDist = 150,
 		},

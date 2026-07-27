@@ -128,9 +128,16 @@ end
 
 -- District band ranges, inner -> outer (band 0/the hub needs no carve — the
 -- {1,0} gate boundary is what connects it).
-local DISTRICT_BANDS = { { 1, 4 }, { 5, 8 }, { 9, 12 } }
+-- Owned by MazeNav so districtOf and the carve can never disagree.
+local DISTRICT_BANDS = MazeNav.DISTRICT_BANDS
 -- Sealed boundaries between adjacent districts, as { outerBand, innerBand }.
-local GATE_BOUNDARIES = { { 1, 0 }, { 5, 4 }, { 9, 8 } }
+-- Derived, never hand-written: each district's single gate sits at its innermost
+-- band, crossing into the band below. Keeps the gates pinned to DISTRICT_BANDS
+-- so a layout change can't leave a gate stranded mid-district.
+local GATE_BOUNDARIES = {}
+for _, range in DISTRICT_BANDS do
+	table.insert(GATE_BOUNDARIES, { range[1], range[1] - 1 })
+end
 
 -- Opens the single passage across one district boundary and returns the
 -- (outerBand, sector) it was cut at, so the caller can place the gate model.
