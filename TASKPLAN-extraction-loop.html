@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TASKPLAN — The extraction loop</title>
+<style>
+  :root{--bg:#14171c;--panel:#1b1f26;--ink:#dde3ea;--muted:#98a3b0;--rule:#2c333d;--accent:#78e69a;--warn:#ffb454;--danger:#ff7a6b;--code-bg:#11141a;}
+  @media (prefers-color-scheme: light){:root{--bg:#f7f8fa;--panel:#fff;--ink:#1c2028;--muted:#5d6773;--rule:#e2e6eb;--accent:#1f8f4d;--warn:#a86400;--danger:#c0392b;--code-bg:#f0f2f5;}}
+  *{box-sizing:border-box;}
+  body{margin:0;padding:3rem 1.5rem 6rem;background:var(--bg);color:var(--ink);font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  main{max-width:900px;margin:0 auto;}
+  h1{font-size:2rem;line-height:1.2;margin:0 0 .25rem;letter-spacing:-.02em;}
+  .sub{color:var(--muted);margin:0 0 2.5rem;font-size:1.05rem;}
+  h2{font-size:1.3rem;margin:3rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--rule);}
+  .phase{color:var(--accent);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;}
+  p,li{margin:.6rem 0;}
+  ul,ol{padding-left:1.3rem;}
+  code{font:.875em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code-bg);padding:.12em .4em;border-radius:4px;}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92rem;}
+  th,td{text-align:left;padding:.6rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top;}
+  th{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;}
+  .wrap{overflow-x:auto;}
+  .card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:1.1rem 1.3rem;margin:1.25rem 0;}
+  .card.danger{border-left:3px solid var(--danger);}
+  .card.warn{border-left:3px solid var(--warn);}
+  .card.ok{border-left:3px solid var(--accent);}
+  .card h4{margin:0 0 .5rem;font-size:.95rem;}
+  .card.danger h4{color:var(--danger);}.card.warn h4{color:var(--warn);}.card.ok h4{color:var(--accent);}
+  .file{font:.82rem ui-monospace,monospace;color:var(--accent);display:block;margin:.35rem 0 .6rem;word-break:break-all;}
+  .check{font-size:.9rem;color:var(--muted);border-left:2px solid var(--rule);padding-left:.8rem;margin:.8rem 0;}
+  .check b{color:var(--ink);font-weight:600;}
+  .flow{font:.82rem/1.8 ui-monospace,monospace;background:var(--code-bg);border:1px solid var(--rule);border-radius:8px;padding:1rem;overflow-x:auto;}
+  ol.dod{counter-reset:d;list-style:none;padding-left:0;}
+  ol.dod li{counter-increment:d;padding-left:2rem;position:relative;margin:.7rem 0;}
+  ol.dod li::before{content:counter(d);position:absolute;left:0;top:.1rem;font:600 .75rem ui-monospace,monospace;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:.05rem .35rem;}
+</style>
+</head>
+<body>
+<main>
+
+<h1>TASKPLAN — The extraction loop</h1>
+<p class="sub">Prize at the centre, exit where you started. Supersedes the deleted salvage-loop plan.</p>
+
+<h2>Why</h2>
+<p>The current flow has no decision in it. The goal is the hub — also the deepest, most dangerous point — so <em>"how far do I push?"</em> can never be asked. You always push all the way, because that's where the door is. Nothing escalates, and being caught costs nothing because a checkpoint hands your position straight back.</p>
+
+<div class="flow">1. Everyone starts in a STAGING ROOM outside the maze —
+   the extraction pad is right there, seen before you leave
+2. Doors open. Descend. Salvage is worth more the deeper it spawns
+3. The VAULT at the hub → taking it TRIPS THE ALARM
+     · every hunter converges on the carrier
+     · every player's compass swings to point at them
+4. Carry it out, back through the same three sealed gates
+5. VAULT REACHES THE PAD → round ends. EVERYONE banks their haul
+6. Caught → haul spills, and the vault drops as its own object
+     that ANYONE can claim</div>
+
+<h2>Settled architecture — do not revisit</h2>
+<div class="wrap"><table>
+  <tr><th>Decision</th><th>Why</th></tr>
+  <tr><td><b>Free-for-all; solo is the degenerate case</b></td><td>One player = a race with nobody in it. <b>No team system at all</b> — no Teams service, no second extraction. Teams would block solo play today.</td></tr>
+  <tr><td><b>Round-based, server-wide</b></td><td>Staging → run → extract → rebuild. <code>MazeGeneration</code> + the existing server-wide restart already do half.</td></tr>
+  <tr><td><b>Banked is safe, carried is at risk</b></td><td>Cash can never be lost. Haul and bought loadout are lost on death.</td></tr>
+  <tr><td><b>Permanent unlocks, per-run rentals</b></td><td>Cash unlocks <em>access</em> forever; you still rent the item into each run and still lose it on death. Progression is your options widening, not your power climbing — so the FFA gap stays bounded and cash never goes worthless.</td></tr>
+  <tr><td><b>Salvage is other runners&#39; lost kit</b></td><td>Fiction only — spilled packs, a dead runner&#39;s rig. Scattered fresh every round; <b>nothing carries between rounds</b>.</td></tr>
+  <tr><td><b>Compass is standard equipment</b></td><td>Points at "the next thing you need" — see Phase 5.</td></tr>
+</table></div>
+
+<h2>Phases</h2>
+
+<h3><span class="phase">Phase 1</span> Salvage and Haul</h3>
+<span class="file">src/features/Salvage/ — Constants, SalvageService.server, SalvageController.client</span>
+<div class="wrap"><table>
+  <tr><th>District</th><th>Pieces</th><th>Value each</th><th>Total</th></tr>
+  <tr><td>OUTER (3)</td><td>10</td><td>10</td><td>100</td></tr>
+  <tr><td>MIDDLE (2)</td><td>8</td><td>30</td><td>240</td></tr>
+  <tr><td>INNER (1)</td><td>6</td><td>75</td><td>450</td></tr>
+  <tr><td><b>VAULT</b> (hub)</td><td>1</td><td><b>500</b></td><td>500</td></tr>
+</table></div>
+<p>The vault is worth more than everything above it combined — which is what makes committing to it <em>tempting</em> rather than obviously correct. Purely additive phase; the game still plays as-is. Haul HUD goes <b>bottom-right</b>, never the top-centre stack.</p>
+
+<h3><span class="phase">Phase 2</span> Staging room, round lifecycle, inverted win</h3>
+<p>A walled room outside the perimeter at radius <code>RADII[13] + 40</code>, with one opening cut through the <code>Perimeter</code> wall — effectively a fourth gate, the mouth of the maze. The extraction pad lives inside it, visible before anyone leaves, which teaches the return trip wordlessly. <code>SPAWN_MIN_BAND</code> and the old random-band spawn become dead code; every run is now a full descent.</p>
+<p>A <code>RoundState</code> attribute drives <code>"Staging"</code> → countdown → door opens → <code>"Active"</code>. Only the <b>vault carrier</b> can end the round at the pad.</p>
+<div class="card danger">
+  <h4>Steps 2.2 and 2.3 must land together</h4>
+  <p><code>EscapeService.bindToMaze</code> does <code>WaitForChild("ExitGate")</code>. Rename that part to <code>Vault</code> without rewriting the win path and <code>bindToMaze</code> yields <b>forever</b> — the round can never end, with no error.</p>
+</div>
+
+<h3><span class="phase">Phase 3</span> The Vault and the alarm</h3>
+<div class="card ok">
+  <h4>The alarm reuses the gunshot summon — write no new hunter logic</h4>
+  <p><code>HunterService</code> already beelines hunters to <code>HunterAlertPos</code> while <code>HunterAlert</code> is recent. SalvageService just refreshes both at the carrier's position every second. The <b>only</b> hunter change: an <code>AlarmActive</code> flag that skips the <code>SUMMON_RADIUS</code> check so the whole maze responds. Leave <code>SUMMON_RADIUS</code> alone — the gunshot summon stays local.</p>
+</div>
+
+<h3><span class="phase">Phase 4</span> Drop, steal, recover</h3>
+<p>In <code>catchPlayer</code>'s <code>task.delay(1.4)</code> block, before the teleport: spill the haul as a recoverable pile <b>and</b> drop the vault as its own separate object. Two things, same spot, different meanings — touching the vault makes you the carrier and re-points the alarm at you. Neither decays; pressure comes from the maze being hot.</p>
+<p>The hunter that caught you <b>no longer warps away</b> — delete that <code>farSpawn</code> pivot so it lingers guarding the kill. Safe: you respawn at the last <em>gate</em>, with <code>SafeUntil</code> grace.</p>
+<div class="card warn">
+  <h4>Step 4.3 — Everything in the maze dies with the round</h4>
+  <p><b>Nothing carries between rounds.</b> Drops are a within-round mechanic only: if nobody recovers a pile before the round ends, it is gone. At round end, clear <code>workspace.Drops</code> and let the existing <code>MazeGeneration</code> hook re-scatter <code>workspace.Salvage</code> from scratch.</p>
+  <p>Do <b>not</b> add any cross-round store of unclaimed value. This is what keeps a loss a real loss — if value leaked forward, dying would cost you a detour rather than the haul.</p>
+</div>
+
+<h3><span class="phase">Phase 5</span> Compass as standard equipment</h3>
+<div class="wrap"><table>
+  <tr><th>State</th><th>Arrow points at</th><th>Why</th></tr>
+  <tr><td><code>VaultTaken == false</code></td><td>next gate inward</td><td>The vault is at the centre and everyone knows where that is — useless info</td></tr>
+  <tr><td><code>VaultTaken == true</code></td><td><code>workspace.VaultPos</code></td><td>Carrier or dropped object — now the most valuable fact in the game</td></tr>
+</table></div>
+<p>One rule: <b>point at the next thing you need to reach.</b> Remove the <code>HasCompass</code> gate and the <code>Compass</code> entry from <code>SPAWNS</code>. The payoff: the instant anyone takes the vault, every player's needle swings to them — no killfeed, no text, everyone just understands.</p>
+
+<h3><span class="phase">Phase 6</span> Cash, unlocks, rentals</h3>
+<p><b>Do not start until 1–5 are playable</b> — prices are unguessable until you know what a run pays. Cash and unlocks are never lost; rented kit dies with you.</p>
+<div class="wrap"><table>
+  <tr><th>Item</th><th>Unlock</th><th>Rent</th><th>Effect</th></tr>
+  <tr><td>Sidearm</td><td>0 (starts unlocked)</td><td>60</td><td><code>HasGun</code>, <code>Ammo = 12</code> — same attributes the pickup grants</td></tr>
+  <tr><td>Ammo box</td><td>0</td><td>30</td><td><code>Ammo += 12</code></td></tr>
+  <tr><td>Floodlight</td><td>250</td><td>40</td><td>boosts the flashlight for the run</td></tr>
+  <tr><td>Medkit</td><td>300</td><td>80</td><td>one stored charge</td></tr>
+  <tr><td><b>Map</b></td><td>900</td><td>150</td><td>reveals the layout — attacks "searching is boring" as a <em>purchase</em>, not a difficulty removed for everyone</td></tr>
+</table></div>
+<p>Two prices per item: <b>unlock</b> once for permanent shelf access, then <b>rent</b> every round you take it in. Cheap things unlock immediately and rent for pennies; the good stuff is a real investment to unlock and still stings to take in. Renting something unowned is rejected server-side, and a player who can't afford a rent simply goes in without it — never block someone from starting a round.</p>
+<p>The store is the one <b>React</b> UI here (a real screen, not a HUD readout): <code>.ui.luau</code> + story, dumb view, props in / intents out. Purchases validated <b>server-side</b> and only while <code>RoundState == "Staging"</code> — never trust a client-sent buy, same discipline as <code>GunService</code>.</p>
+
+<h2>Definition of Done</h2>
+<div class="card ok">
+<ol class="dod">
+  <li>All three lune checks pass.</li>
+  <li>A round runs end-to-end with no manual button press.</li>
+  <li>Salvage scatters per district, depth-scaled, at different cells every play.</li>
+  <li>Taking the vault pulls every hunter <b>and</b> swings every compass to the carrier.</li>
+  <li>Only the vault carrier can end the round at the pad.</li>
+  <li>Being caught spills the haul <em>and</em> drops the vault for anyone to claim; the hunter lingers.</li>
+  <li>Everyone banks their haul at round end, not just the winner.</li>
+  <li><b>Nothing carries between rounds</b> — unrecovered drops and uncollected salvage are destroyed at round end.</li>
+  <li>Cash and unlocks survive a rejoin; rented kit does not survive death.</li>
+  <li>Renting an unowned item, or buying outside staging, is rejected server-side.</li>
+  <li>No team system, no permanent stat/power upgrades (unlocks widen options only), no global run countdown, HUD stack untouched.</li>
+  <li>No debug prints remain.</li>
+</ol>
+</div>
+
+</main>
+</body>
+</html>
