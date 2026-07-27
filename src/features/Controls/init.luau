@@ -12,7 +12,7 @@
 export type Control = {
 	-- Chip text, e.g. "SHIFT" or "W A S D". Kept short; the legend is narrow.
 	key: string,
-	-- What the key does, e.g. "Crouch (hide behind walls)".
+	-- What the key does, e.g. "Look behind (hold)".
 	label: string,
 	-- Sort order in the legend (low → high). Ties break by label.
 	order: number?,

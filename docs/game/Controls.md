@@ -29,7 +29,7 @@ mentions your feature. Same convention as `PlayerData.luau` and `Settings.luau`.
 
 `key` is the chip text and should stay short, since the legend is narrow (`"W A S D"`
 is about the practical maximum). `order` sorts low → high, ties broken by label.
-Current allocations: Sprint uses 10–30, LookBack uses 40.
+Current allocations: Sprint uses 10–20, LookBack uses 40.
 
 ## Sealing
 
@@ -46,5 +46,5 @@ This started as a hardcoded `CONTROLS` list inside the controller, which meant
 Controls named Sprint's keys — a violation of the registration rule in
 `CLAUDE.md` ("adding a new feature must not require touching another feature's
 files"). It was converted to a registry when LookBack was added, and the existing
-Move / Sprint / Crouch entries moved to `src/features/Sprint/Controls.luau`,
+Move / Sprint entries moved to `src/features/Sprint/Controls.luau`,
 which is the feature that actually owns those keys.

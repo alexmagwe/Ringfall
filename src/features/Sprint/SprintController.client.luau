@@ -1,8 +1,7 @@
 --!strict
--- Movement: hold Shift to sprint (drains stamina), hold C to crouch (slower,
--- lowered view, and — behind a wall — hidden from the hunter). Crouch and sprint
--- are mutually exclusive. Crouch state is sent to the server (StealthNet) so the
--- Hunter can treat a crouched-behind-cover player as unseen.
+-- Movement: hold Shift to sprint, draining stamina. Hiding from the hunters is
+-- handled entirely by line-of-sight now (walls break their sensing) rather than
+-- by a crouch verb — see docs/game/Hunter.md.
 --
 -- Auto-loaded: name ends in `Controller`.
 -- .client.luau => splitter routes to StarterPlayerScripts.Features.Sprint.
@@ -10,28 +9,9 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local StealthNet = require(ReplicatedStorage.Features.Stealth.StealthNet)
 
 local WALK_SPEED = 16
 local SPRINT_SPEED = 26
-local CROUCH_SPEED = 8
-local CROUCH_CAMERA_DROP = 2.2
-local CROUCH_LERP = 0.25
-
--- Crouch pose. Set this to a published crouch animation to get a real crouch;
--- while it's empty the crouch is camera-and-speed only and the avatar stays
--- upright. See docs/game/Stealth.md for how to author one.
---
--- Do NOT go back to lowering Humanoid.HipHeight to fake this. It sinks the whole
--- rig, so the feet end up below the floor — the legs are rigid and won't bend
--- without an animation. Humanoid.BodyHeightScale is also a dead end: this place's
--- avatar settings clamp it, and 0.6 shortened the character by only ~5%. The
--- character is on Roblox's constraint-based rig (AnimationConstraint /
--- BallSocketConstraint, no Motor6D), so posing joints via C0 isn't available
--- either. An animation is the only mechanism that actually works here.
-local CROUCH_ANIMATION_ID = ""
 local MAX_STAMINA = 100
 local DRAIN = 26
 local REGEN = 16
@@ -48,10 +28,12 @@ function SprintController.Start()
 	gui.IgnoreGuiInset = true
 	gui.Parent = player:WaitForChild("PlayerGui")
 
+	-- Stamina sits just under the health bar (Health feature), both top-centre,
+	-- same 320px width so they align as a stacked pair.
 	local back = Instance.new("Frame")
-	back.Size = UDim2.fromOffset(220, 10)
-	back.Position = UDim2.new(0.5, 0, 1, -28)
-	back.AnchorPoint = Vector2.new(0.5, 1)
+	back.Size = UDim2.fromOffset(320, 14)
+	back.Position = UDim2.new(0.5, 0, 0, 94)
+	back.AnchorPoint = Vector2.new(0.5, 0)
 	back.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
 	back.BackgroundTransparency = 0.35
 	back.BorderSizePixel = 0
@@ -69,29 +51,8 @@ function SprintController.Start()
 	fillCorner.Parent = fill
 
 	local stamina = MAX_STAMINA
+	local prevMaxStamina = MAX_STAMINA
 	local sprintHeld = false
-	local crouchHeld = false
-	local crouchedSent = false
-	-- Re-loaded whenever the character respawns (a fresh Humanoid instance).
-	local trackedHum: Humanoid? = nil
-	local crouchTrack: AnimationTrack? = nil
-
-	local function loadCrouchTrack(hum: Humanoid): AnimationTrack?
-		if CROUCH_ANIMATION_ID == "" then
-			return nil
-		end
-		local animator = hum:FindFirstChildOfClass("Animator")
-		if not animator then
-			return nil
-		end
-		local anim = Instance.new("Animation")
-		anim.AnimationId = CROUCH_ANIMATION_ID
-		local track = animator:LoadAnimation(anim)
-		-- Action priority so it wins over the default idle/walk tracks.
-		track.Priority = Enum.AnimationPriority.Action
-		track.Looped = true
-		return track
-	end
 
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if gp then
@@ -99,15 +60,11 @@ function SprintController.Start()
 		end
 		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 			sprintHeld = true
-		elseif input.KeyCode == Enum.KeyCode.C or input.KeyCode == Enum.KeyCode.LeftControl then
-			crouchHeld = true
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
 		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 			sprintHeld = false
-		elseif input.KeyCode == Enum.KeyCode.C or input.KeyCode == Enum.KeyCode.LeftControl then
-			crouchHeld = false
 		end
 	end)
 
@@ -117,47 +74,30 @@ function SprintController.Start()
 		if not hum then
 			return
 		end
-		if hum ~= trackedHum then
-			trackedHum = hum
-			crouchTrack = loadCrouchTrack(hum)
+
+		-- Stamina pickup (Pickups feature) raises the max live. If the bar was
+		-- topped out under the old max, bump it to the new one so the upgrade is
+		-- felt immediately instead of just widening unused headroom.
+		local maxStamina = MAX_STAMINA + (player:GetAttribute("StaminaBonus") or 0)
+		if maxStamina > prevMaxStamina and stamina >= prevMaxStamina - 0.5 then
+			stamina = maxStamina
 		end
+		prevMaxStamina = maxStamina
+		stamina = math.min(stamina, maxStamina)
 
 		local moving = hum.MoveDirection.Magnitude > 0.1
-		local crouching = crouchHeld
-		local sprinting = not crouching and sprintHeld and moving and stamina > 0
+		local sprinting = sprintHeld and moving and stamina > 0
 
-		if crouchTrack then
-			if crouching and not crouchTrack.IsPlaying then
-				crouchTrack:Play(0.15)
-			elseif not crouching and crouchTrack.IsPlaying then
-				crouchTrack:Stop(0.15)
-			end
-		end
-
-		if crouching then
-			hum.WalkSpeed = CROUCH_SPEED
-			hum.CameraOffset = hum.CameraOffset:Lerp(Vector3.new(0, -CROUCH_CAMERA_DROP, 0), CROUCH_LERP)
-			stamina = math.min(MAX_STAMINA, stamina + REGEN * dt)
+		if sprinting then
+			stamina = math.max(0, stamina - DRAIN * dt)
+			hum.WalkSpeed = SPRINT_SPEED
 		else
-			hum.CameraOffset = hum.CameraOffset:Lerp(Vector3.zero, CROUCH_LERP)
-			if sprinting then
-				stamina = math.max(0, stamina - DRAIN * dt)
-				hum.WalkSpeed = SPRINT_SPEED
-			else
-				stamina = math.min(MAX_STAMINA, stamina + REGEN * dt)
-				hum.WalkSpeed = WALK_SPEED
-			end
+			stamina = math.min(maxStamina, stamina + REGEN * dt)
+			hum.WalkSpeed = WALK_SPEED
 		end
 
-		-- Tell the server on crouch-state changes (not every frame).
-		if crouching ~= crouchedSent then
-			crouchedSent = crouching
-			StealthNet.Crouch.send(crouching)
-		end
-
-		fill.Size = UDim2.fromScale(stamina / MAX_STAMINA, 1)
+		fill.Size = UDim2.fromScale(stamina / maxStamina, 1)
 		fill.BackgroundColor3 = if stamina < 25 then Color3.fromRGB(210, 120, 90) else Color3.fromRGB(120, 200, 140)
-		back.Visible = stamina < MAX_STAMINA - 0.5
 	end)
 end
 
