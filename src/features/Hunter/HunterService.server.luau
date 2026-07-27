@@ -1,15 +1,16 @@
 --!strict
 -- Hunters: several creatures that stalk the maze. Each independently chases the
--- nearest player it can "sense" — but a player who CROUCHES with a wall breaking
--- line-of-sight goes unseen, so the hunter loses the lock and falls back to
--- SEARCHING their last-known spot, then WANDERING. Faster the deeper the target
--- is; catch drags you to your last checkpoint with a looming red-out.
+-- nearest player it can "sense". Any wall breaking line-of-sight hides you, so
+-- the hunter loses the lock and falls back to SEARCHING your last-known spot,
+-- then WANDERING. Faster the deeper the target is; catch drags you to your last
+-- checkpoint with a looming red-out.
 --
 -- Auto-loaded (name ends in `Service`). Priority after MazeService (5).
 -- .server.luau => splitter routes to ServerScriptService.Features.Hunter.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
@@ -17,13 +18,33 @@ local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
 local HunterService = {}
 HunterService.Priority = 15
 
-local HUNTER_COUNT = 3
+local HUNTER_COUNT = 6
 local BASE_SPEED = 17 -- outer rings: just above walk (16), below sprint (26)
 local MAX_SPEED = 29 -- near the centre: harder as you go deeper
 local SPEED_PER_BAND = 1.0
 local CATCH_DIST = 7
 local REPATH = 0.7
+local EVAC_ALERT_SECONDS = 4 -- window after any escape where every hunter sprints for the centre
 local EYE_COLOR = Color3.fromRGB(255, 40, 30)
+
+-- Combat: 10 gunshots kill a hunter. On death it explodes and drags anyone
+-- caught in the blast to their checkpoint (reuses catchPlayer — no player-HP
+-- model). It respawns at a far cell so the maze never empties.
+local HUNTER_HITS = 10
+local BLAST_RADIUS = 14
+local RESPAWN_DELAY = 4
+-- HP drained per second while a hunter is within CATCH_DIST. The catch (loom +
+-- checkpoint) only fires once Health hits 0, so a hunter has to *stay* on you —
+-- you can break away and stop the bleed. ~4s of sustained contact = a catch.
+local HEALTH_DRAIN = 25
+local BLAST_SOUND_ID = "" -- user may supply a boom sound later; silent until set
+
+-- Summon: a hunter that gets shot alerts nearby hunters to the shooter's
+-- position (GunService sets these attributes on a hit; this file only
+-- consumes them, mirroring the existing EvacAlert idiom above).
+local SUMMON_WINDOW = 5 -- seconds other hunters beeline to the alert
+local SUMMON_RADIUS = 200 -- only hunters within this of the alert respond
+local SIREN_SOUND_ID = "" -- user supplies; siren plays on the shot hunter
 
 -- The body is the classic duck mesh, scaled up to loom and tinted near-black so
 -- it reads as a silhouette rather than a bath toy. Scale is on a 2x2x2 host
@@ -121,7 +142,37 @@ local function buildHunter(): Model
 	local hum = Instance.new("Humanoid")
 	hum.WalkSpeed = BASE_SPEED
 	hum.MaxSlopeAngle = 89
+	hum.MaxHealth = HUNTER_HITS
+	hum.Health = HUNTER_HITS
 	hum.Parent = model
+
+	-- Health bar: hidden while full, appears and drains as the gun hits land.
+	-- Property changes on the GUI replicate to every client with no client code.
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "HealthBar"
+	billboard.Size = UDim2.fromOffset(120, 12)
+	billboard.StudsOffset = Vector3.new(0, 4, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Enabled = false
+	billboard.Parent = root
+
+	local back = Instance.new("Frame")
+	back.Size = UDim2.fromScale(1, 1)
+	back.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+	back.BorderSizePixel = 0
+	back.Parent = billboard
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+	fill.BorderSizePixel = 0
+	fill.Parent = back
+
+	hum.HealthChanged:Connect(function(health)
+		billboard.Enabled = health < hum.MaxHealth
+		fill.Size = UDim2.fromScale(math.clamp(health / hum.MaxHealth, 0, 1), 1)
+	end)
 
 	return model
 end
@@ -138,6 +189,45 @@ local function farSpawn(from: Vector3): Vector3
 		end
 	end
 	return Vector3.new(0, 4, 400)
+end
+
+-- A dying hunter's blast: a bright Neon ball that expands and fades. No asset
+-- needed; if the user later supplies BLAST_SOUND_ID this plays alongside it.
+local function explodeAt(pos: Vector3)
+	local ball = Instance.new("Part")
+	ball.Shape = Enum.PartType.Ball
+	ball.Anchored = true
+	ball.CanCollide = false
+	ball.CanTouch = false
+	ball.CanQuery = false
+	ball.Material = Enum.Material.Neon
+	ball.Color = Color3.fromRGB(255, 140, 40)
+	ball.Size = Vector3.new(2, 2, 2)
+	ball.CFrame = CFrame.new(pos)
+	ball.Parent = workspace
+
+	local light = Instance.new("PointLight")
+	light.Color = ball.Color
+	light.Range = 32
+	light.Brightness = 5
+	light.Parent = ball
+
+	if BLAST_SOUND_ID ~= "" then
+		local sound = Instance.new("Sound")
+		sound.SoundId = BLAST_SOUND_ID
+		sound.Parent = ball
+		sound:Play()
+	end
+
+	local tween = TweenService:Create(
+		ball,
+		TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(BLAST_RADIUS * 2, BLAST_RADIUS * 2, BLAST_RADIUS * 2), Transparency = 1 }
+	)
+	tween:Play()
+	tween.Completed:Connect(function()
+		ball:Destroy()
+	end)
 end
 
 -- Is `toPos` visible from `fromPos`, i.e. no ring/spoke wall between them?
@@ -172,18 +262,26 @@ function HunterService.Start()
 		workspace:GetAttributeChangedSignal("MazeReady"):Wait()
 	end
 	local spawnLocation = workspace:WaitForChild("SpawnLocation") :: SpawnLocation
-	local maxBand = MazeNav.maxBand()
 
 	local cellKeys: { number } = {}
-	for key in MazeNav.cellPos do
-		table.insert(cellKeys, key)
+	local maxBand = 0
+
+	-- Re-snapshots the nav graph after a rebuild — the adjacency has changed.
+	local function refreshNav()
+		cellKeys = {}
+		for key in MazeNav.cellPos do
+			table.insert(cellKeys, key)
+		end
+		maxBand = MazeNav.maxBand()
 	end
+	refreshNav()
+
 	local rng = Random.new()
 	local function randomCell(): number
 		return cellKeys[rng:NextInteger(1, #cellKeys)]
 	end
 
-	-- Nearest player this hunter can currently SENSE (crouched-behind-cover = unseen).
+	-- Nearest player this hunter can currently SENSE (behind cover = unseen).
 	local function nearestSensed(pos: Vector3): (Player?, Model?)
 		local bestP, bestC, bestDist = nil, nil, math.huge
 		for _, plr in Players:GetPlayers() do
@@ -195,8 +293,8 @@ function HunterService.Start()
 			if not hrp then
 				continue
 			end
-			if plr:GetAttribute("Crouched") and not canSee(pos, hrp.Position) then
-				continue -- hidden from this hunter
+			if not canSee(pos, hrp.Position) then
+				continue -- a wall is between us: hidden from this hunter
 			end
 			local d = (hrp.Position - pos).Magnitude
 			if d < bestDist then
@@ -206,7 +304,7 @@ function HunterService.Start()
 		return bestP, bestC
 	end
 
-	-- Nearest player within physical reach (used for the catch — no LOS/crouch, so
+	-- Nearest player within physical reach (used for the catch — no LOS check, so
 	-- bumping into a hidden player still catches; cheap, no raycast).
 	local function nearestReachable(pos: Vector3): (Player?, Model?, number)
 		local bestP, bestC, bestDist = nil, nil, math.huge
@@ -256,6 +354,9 @@ function HunterService.Start()
 			end
 			root.Anchored = false
 			hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
+			-- Fresh life at the checkpoint = a full bar again (not regen — you only
+			-- refill by dying back to a checkpoint or grabbing a MedKit).
+			player:SetAttribute("Health", player:GetAttribute("MaxHealth") or 100)
 			player:SetAttribute("Caught", false)
 		end)
 	end
@@ -267,6 +368,37 @@ function HunterService.Start()
 		local growl = root:FindFirstChild("HunterDrone") :: Sound?
 		hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
 		hunter.Parent = workspace
+
+		-- Per-hunter connections torn down when this hunter dies. The Heartbeat
+		-- catch loop below is the load-bearing one: without disconnecting it, it
+		-- keeps firing against the destroyed root's *frozen* death position and
+		-- phantom-catches anyone who later walks over that spot — an invisible
+		-- 7-stud trap left at every kill site, forever. (The decision-loop
+		-- task.spawn self-terminates via its `while hunter.Parent` guard, so it
+		-- isn't tracked here.)
+		local conns: { RBXScriptConnection } = {}
+
+		-- Death -> explosion -> catch -> respawn. catchPlayer/farSpawn/spawnLocation
+		-- are only in scope inside this closure, which is exactly why this wiring
+		-- lives here rather than being exported.
+		hum.Died:Connect(function()
+			for _, c in conns do
+				c:Disconnect()
+			end
+			explodeAt(root.Position)
+			for _, plr in Players:GetPlayers() do
+				if outOfRound(plr) then
+					continue
+				end
+				local c = plr.Character
+				local phrp = c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
+				if phrp and (phrp.Position - root.Position).Magnitude < BLAST_RADIUS then
+					catchPlayer(plr, c :: Model, hunter, root, growl)
+				end
+			end
+			hunter:Destroy()
+			task.delay(RESPAWN_DELAY, spawnHunter) -- keep the maze populated
+		end)
 
 		local lastKnownCell: number? = nil
 		local wanderTarget: number? = nil
@@ -294,6 +426,36 @@ function HunterService.Start()
 		task.spawn(function()
 			while hunter.Parent do
 				if MazeNav.ready then
+					local alert = workspace:GetAttribute("EvacAlert")
+					if typeof(alert) == "number" and os.clock() - alert < EVAC_ALERT_SECONDS then
+						-- An escape just happened: sprint for the centre so hunters
+						-- converge on the pad in shot for the escape cinematic,
+						-- arriving too late.
+						hum.WalkSpeed = MAX_SPEED
+						local centreCell = MazeNav.nearestCell(Vector3.zero)
+						stepToward(centreCell)
+						task.wait(REPATH)
+						continue
+					end
+
+					-- Summon: a hunter just got shot. Nearby hunters (within
+					-- SUMMON_RADIUS) beeline to the shooter's position for
+					-- SUMMON_WINDOW seconds. GunService sets these attributes on a
+					-- hit (Phase 3); this is the consumer.
+					local sAlert = workspace:GetAttribute("HunterAlert")
+					local sPos = workspace:GetAttribute("HunterAlertPos")
+					if
+						typeof(sAlert) == "number"
+						and os.clock() - sAlert < SUMMON_WINDOW
+						and typeof(sPos) == "Vector3"
+						and (root.Position - (sPos :: Vector3)).Magnitude < SUMMON_RADIUS
+					then
+						hum.WalkSpeed = MAX_SPEED
+						stepToward(MazeNav.nearestCell(sPos :: Vector3))
+						task.wait(REPATH)
+						continue
+					end
+
 					local _, target = nearestSensed(root.Position)
 					local thrp = target and target:FindFirstChild("HumanoidRootPart") :: BasePart?
 					if thrp then
@@ -327,23 +489,37 @@ function HunterService.Start()
 			end
 		end)
 
-		RunService.Heartbeat:Connect(function()
+		table.insert(conns, RunService.Heartbeat:Connect(function(dt)
 			local player, char, dist = nearestReachable(root.Position)
-			if player and char and dist < CATCH_DIST then
-				catchPlayer(player, char, hunter, root, growl)
+			if not (player and char and dist < CATCH_DIST) then
+				return
 			end
-		end)
+			-- Attacked: bleed the player's Health. Only a drop to 0 triggers the
+			-- catch. `nearestReachable` already skips out-of-round players, so a
+			-- mid-catch / freshly-checkpointed player isn't drained further.
+			local hp = player:GetAttribute("Health")
+			if typeof(hp) ~= "number" then
+				return
+			end
+			hp -= HEALTH_DRAIN * dt
+			if hp > 0 then
+				player:SetAttribute("Health", hp)
+				return
+			end
+			player:SetAttribute("Health", 0)
+			catchPlayer(player, char, hunter, root, growl)
+		end))
 
 		local function watchRestart(plr: Player)
-			plr:GetAttributeChangedSignal("Escaped"):Connect(function()
+			table.insert(conns, plr:GetAttributeChangedSignal("Escaped"):Connect(function()
 				if plr:GetAttribute("Escaped") == false then
 					hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
 					lastKnownCell = nil
 					wanderTarget = nil
 				end
-			end)
+			end))
 		end
-		Players.PlayerAdded:Connect(watchRestart)
+		table.insert(conns, Players.PlayerAdded:Connect(watchRestart))
 		for _, plr in Players:GetPlayers() do
 			watchRestart(plr)
 		end
@@ -352,6 +528,21 @@ function HunterService.Start()
 	for _ = 1, HUNTER_COUNT do
 		spawnHunter()
 	end
+
+	workspace:GetAttributeChangedSignal("MazeGeneration"):Connect(function()
+		refreshNav()
+		-- Old wander/search targets refer to the previous layout; re-homing the
+		-- model is enough — stepToward re-reads MazeNav live each step and will
+		-- re-path within one REPATH tick.
+		for _, hunter in workspace:GetChildren() do
+			if hunter:IsA("Model") and hunter.Name == "Hunter" then
+				hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
+			end
+		end
+		-- A stale summon alert must not carry into a new round.
+		workspace:SetAttribute("HunterAlert", nil)
+		workspace:SetAttribute("HunterAlertPos", nil)
+	end)
 end
 
 return HunterService

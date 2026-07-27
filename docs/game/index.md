@@ -22,8 +22,14 @@ one-way dependency rule that keeps the framework updatable.
 
 | Doc | Feature |
 | --- | ------- |
-| [Hunter.md](Hunter.md) | Maze stalkers — sensing, chase/search/wander, the catch, and the duck avatar |
-| [Stealth.md](Stealth.md) | Crouch — input, the `Crouched` attribute, and the crouch-animation asset |
+| [Maze.md](Maze.md) | The circular maze — per-round seed, the `MazeGeneration` rebuild contract, the far-spawn rule |
+| [Escape.md](Escape.md) | Round state machine, packets, personal best, the escape cinematic |
+| [Hunter.md](Hunter.md) | Maze stalkers — sensing, chase/search/wander, the catch, the duck avatar, combat (health/death/explosion/respawn), the summon, and the evac-alert convergence |
+| [Checkpoint.md](Checkpoint.md) | Sealed-district gate checkpoints — district (not band) tracking, respawn-at-gate, the floor-level stand CFrame |
+| [Pickups.md](Pickups.md) | Per-run scavenge — gun, ammo, compass, flashlight, stamina upgrade; scatter/grant/clear lifecycle + the model-clone convention |
+| [Flashlight.md](Flashlight.md) | Camera-cone light, gated on the `HasFlashlight` scavenge attribute |
+| [Health.md](Health.md) | Player HP — hunter-contact drain, MedKit heal, the top health bar, death-at-0 |
+| [Gun.md](Gun.md) | Client-request/server-authority gun — ammo economy, the `Humanoid.TakeDamage` seam, the summon trigger |
 | [LookBack.md](LookBack.md) | Hold-Q glance behind, and how it avoids inverting movement |
 | [Controls.md](Controls.md) | Key legend + the `Controls.luau` registration convention |
 | [Clicker.md](Clicker.md) | Coin Clicker — server-authoritative currency loop (practice game) |

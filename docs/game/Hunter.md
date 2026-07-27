@@ -1,7 +1,7 @@
 # Hunter
 
 Several creatures that stalk the maze. Each one independently chases the nearest
-player it can *sense*, loses the lock if that player crouches behind cover, then
+player it can *sense*, loses the lock when a wall breaks line-of-sight, then
 falls back to searching their last-known spot and finally to wandering. Catching
 a player drags them back to their last checkpoint behind a red-out.
 
@@ -83,19 +83,29 @@ Each runs a loop every `REPATH` (0.7s) picking one of three states:
   `BASE_SPEED`, then gives up.
 - **Wander** — no lead. Picks random maze cells.
 
-Sensing is line-of-sight: `canSee` raycasts against the `Maze` model and treats
-`Arc`, `Spoke` and `Perimeter` parts as blockers. A player who is **crouched**
-(the `Crouched` attribute, set by the Stealth feature) *and* behind one of those
-is skipped entirely.
+Sensing is pure line-of-sight: `canSee` raycasts against the `Maze` model and
+treats `Arc`, `Spoke` and `Perimeter` parts as blockers. Any player behind one of
+those is skipped entirely — **breaking line-of-sight is the whole stealth
+mechanic**. There is no crouch; it was removed as a verb because it added an
+input without adding a decision, and it required a Studio-authored animation to
+look like anything. Cover alone now does the work.
 
-The catch runs on `Heartbeat` at `CATCH_DIST` (7 studs) and deliberately
-**ignores line-of-sight and crouch** — blundering into a hidden player still
-catches them. It freezes the player, turns the hunter to face them, swells the
-drone, then after 1.4s drops them at their `Checkpoint` attribute and warps the
-hunter far away.
+Contact is now a **drain, not an instant catch**. On `Heartbeat`, while a player
+is within `CATCH_DIST` (7 studs) — line-of-sight ignored, so a blind corner still
+counts — the hunter bleeds their `Health` attribute by `HEALTH_DRAIN` (25 HP/s).
+A hunter has to *stay* on you; break contact and the bleed stops. Only when
+`Health` reaches **0** does the catch proper fire: freeze the player, turn the
+hunter to face them, swell the drone, then after 1.4s drop them at their
+`Checkpoint`, **refill Health to full**, and warp the hunter away. Multiple
+hunters stack their drain, so being swarmed kills fast. See [Health.md](Health.md).
 
 Players with `Escaped`, `Caught`, or an unexpired `SafeUntil` attribute are
-ignored by both sensing and catching.
+ignored by both sensing and draining/catching.
+
+The **explosion** (a shot-dead hunter) still catches instantly within
+`BLAST_RADIUS` rather than draining — a point-blank blast is lethal regardless of
+Health. Change the `catchPlayer` call in the `Died` handler to a `Health` hit if
+you'd rather explosions be survivable.
 
 ## Sound
 
@@ -104,9 +114,100 @@ between 10 and 170 studs on `InverseTapered`. Volume rises from 0.8 to 1.6 durin
 the catch. This is the main distance cue the player has — be careful raising the
 rolloff minimum, since it's what makes a hunter audible before it's visible.
 
+## Combat
+
+Hunters are killable (see [Gun.md](Gun.md) for the shooter side), but the maze
+never empties — a dead hunter respawns at a far cell. No new player-HP model
+was added; "caught" is still a teleport to checkpoint, and the explosion
+below reuses that exact `catchPlayer` flow rather than dealing damage.
+
+**Health bar.** `buildHunter` sets `hum.MaxHealth = hum.Health = HUNTER_HITS`
+(10) — each gunshot is 1 damage, so 10 hits kill. A `BillboardGui` over the
+root (`StudsOffset = (0, 4, 0)`) holds a dark background `Frame` and a red
+`Fill` `Frame`; `hum.HealthChanged` toggles `billboard.Enabled = health <
+MaxHealth` and resizes `Fill` to `health / MaxHealth`. Property changes on a
+GUI replicate to every client, so the draining bar needs no client code.
+
+**Death → explosion → catch → respawn.** `hum.Died` is connected once inside
+`spawnHunter` (not exported — `catchPlayer` / `farSpawn` / `spawnLocation` are
+only in scope inside that closure):
+
+1. `explodeAt(root.Position)` — a module-level helper: a Neon ball tweens its
+   `Size` up to `BLAST_RADIUS * 2` and `Transparency` to 1 over ~0.4s, then
+   `Destroy()`s. No asset required; if `BLAST_SOUND_ID` is later set, a Sound
+   plays alongside it.
+2. Every player within `BLAST_RADIUS` (14 studs) who isn't already
+   `outOfRound` gets `catchPlayer`'d — same freeze/loom/checkpoint-teleport
+   flow as the normal bump-catch, just triggered by the blast instead of
+   `Heartbeat` proximity. `catchPlayer`'s own `Caught` early-return means a
+   multi-hunter chain can't double-catch the same player.
+3. `hunter:Destroy()`, then `task.delay(RESPAWN_DELAY, spawnHunter)` (4s) —
+   `HUNTER_COUNT` (3) stays constant over time.
+
+**Connection teardown on death.** Every per-hunter connection — the `Heartbeat`
+catch loop, the `PlayerAdded` hook, and each per-player `Escaped` watcher — is
+collected into a `conns` table and disconnected in the `Died` handler. This is
+not just hygiene: a destroyed part keeps returning its **frozen** `Position`, so
+a live `Heartbeat` catch loop would go on checking the dead hunter's death spot
+and drag any player who later walked within `CATCH_DIST` of it to their
+checkpoint — an invisible trap left at every kill site. The decision-loop
+`task.spawn` is the one exception: it self-terminates via its
+`while hunter.Parent` guard and so isn't tracked in `conns`.
+
+## Summon — retaliation has a cost
+
+Shooting a hunter (see [Gun.md](Gun.md)) alerts other hunters to the shooter's
+position, mirroring the `EvacAlert` pattern above but distinct from it:
+
+- `GunService` (the producer, Gun feature) sets
+  `workspace.HunterAlert` (an `os.clock()` timestamp) and
+  `workspace.HunterAlertPos` (a `Vector3` — workspace attributes accept
+  `Vector3` directly) on a successful hit.
+- `HunterService` (the consumer, here) checks this branch **after** the
+  `EvacAlert` branch and **before** the normal CHASE decision, each `REPATH`
+  tick: any hunter within `SUMMON_RADIUS` (200 studs) of `HunterAlertPos`, for
+  `SUMMON_WINDOW` (5s) after `HunterAlert`, sprints (`MAX_SPEED`) toward the
+  nearest cell to that position instead of chasing/searching/wandering
+  normally.
+- Both attributes are cleared (`nil`) on every `MazeGeneration` rebuild, in the
+  same listener that re-homes hunters — a stale alert can never carry into a
+  new round.
+- `SIREN_SOUND_ID = ""` is a seam here (unused until Gun's own copy plays a
+  siren on the hit hunter — see [Gun.md](Gun.md)); silent until the user
+  supplies an asset.
+
+## Evac alert — converging on the pad
+
+`workspace.EvacAlert` (a `os.clock()` timestamp) is set by `EscapeService` the
+moment any player touches the exit gate. For `EVAC_ALERT_SECONDS` (4s)
+afterward, **every** hunter overrides its normal chase/search/wander decision
+and sprints (`MAX_SPEED`) straight for the cell nearest world-centre — the
+branch is checked first, before the CHASE state, each `REPATH` tick. This gives
+the escape cinematic (see [Escape.md](Escape.md)) hunters visibly converging on
+the pad, arriving just too late. It's independent of whether they were sensing
+anyone.
+
+## Rebuild refresh
+
+`MazeService.rebuild` re-carves the maze on every round (see
+[Maze.md](Maze.md)'s `MazeGeneration` contract). `HunterService` listens for
+`workspace:GetAttributeChangedSignal("MazeGeneration")` and:
+
+1. Re-snapshots `cellKeys` (from `MazeNav.cellPos`) and `maxBand` — these were
+   captured once at `Start()` and go stale the instant the graph changes.
+2. Re-homes every live `Hunter` model to a fresh `farSpawn` point.
+
+Per-hunter `lastKnownCell` / `wanderTarget` closures are **not** explicitly
+reset on rebuild — re-homing the model is enough, since `stepToward` reads
+`MazeNav` live every step and will naturally re-path within one `REPATH` tick
+(0.7s) once the hunter is somewhere valid in the new layout.
+
 ## Dependencies
 
 Reads `ReplicatedStorage.Features.Maze.MazeNav` for the navigation graph and
-`workspace.MazeReady` / `workspace.SpawnLocation`. Reads the `Crouched` attribute
-published by Stealth, and the `Checkpoint` / `Escaped` / `SafeUntil` attributes.
-`Priority = 15`, so it starts after `MazeService` (5).
+`workspace.MazeReady` / `workspace.MazeGeneration` / `workspace.EvacAlert` /
+`workspace.HunterAlert` / `workspace.HunterAlertPos` / `workspace.SpawnLocation`,
+and the `Checkpoint` / `Escaped` / `SafeUntil` player attributes.
+`workspace.HunterAlert` / `HunterAlertPos` are written by `Gun/GunService.server.luau`
+(see [Gun.md](Gun.md)) — Hunter only consumes them. `Priority = 15`, so it
+starts after `MazeService` (5).
