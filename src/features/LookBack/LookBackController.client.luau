@@ -65,8 +65,9 @@ function LookBackController.Start()
 		local char = player.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 
-		-- The catch cutscene takes the camera over entirely; don't fight it.
-		if player:GetAttribute("Caught") or not root then
+		-- The catch cutscene and the escape cinematic both take the camera over
+		-- entirely; don't fight either of them.
+		if player:GetAttribute("Caught") or player:GetAttribute("Escaped") or not root then
 			alpha = 0
 			return
 		end

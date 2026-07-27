@@ -17,6 +17,7 @@ local Net = require(ReplicatedStorage.Features.Maze.Net)
 -- WinScreen is a `.ui.luau`, so the splitter routes it to ReplicatedStorage,
 -- not alongside this client script in PlayerScripts.
 local WinScreen = require(ReplicatedStorage.Features.Maze.WinScreen)
+local EscapeCinematic = require(script.Parent.EscapeCinematicController)
 
 local UIController = {}
 
@@ -37,21 +38,24 @@ local function App()
 	local running, setRunning = React.useState(false)
 	local elapsed, setElapsed = React.useState(0)
 	local startClock, setStartClock = React.useState(nil :: number?)
-	local winTime, setWinTime = React.useState(nil :: number?)
+	local winState, setWinState = React.useState(nil :: { timeSeconds: number, bestSeconds: number, isNewBest: boolean }?)
 
 	-- One-time packet subscriptions. ByteNet's `listen` has no unsubscribe,
 	-- but App mounts exactly once for the client's whole session, so a
 	-- single registration is correct (not a leak).
 	React.useEffect(function()
 		Net.RunStarted.listen(function()
-			setWinTime(nil)
+			setWinState(nil)
 			setElapsed(0)
 			setStartClock(os.clock())
 			setRunning(true)
 		end)
-		Net.Escaped.listen(function(payload: { timeSeconds: number })
+		Net.Escaped.listen(function(payload: { timeSeconds: number, bestSeconds: number, isNewBest: boolean })
 			setRunning(false)
-			setWinTime(payload.timeSeconds)
+			task.spawn(function()
+				EscapeCinematic.play()
+				setWinState(payload)
+			end)
 		end)
 		return nil
 	end, {} :: { any })
@@ -73,9 +77,10 @@ local function App()
 
 	local function onRestart()
 		setRunning(false)
-		setWinTime(nil)
+		setWinState(nil)
 		setElapsed(0)
 		setStartClock(nil)
+		EscapeCinematic.stop()
 		Net.Restart.send(nil)
 	end
 
@@ -99,9 +104,11 @@ local function App()
 			}),
 		}),
 
-		WinScreenHost = if winTime ~= nil
+		WinScreenHost = if winState ~= nil
 			then React.createElement(WinScreen, {
-				timeSeconds = winTime :: number,
+				timeSeconds = winState.timeSeconds,
+				bestSeconds = winState.bestSeconds,
+				isNewBest = winState.isNewBest,
 				onRestart = onRestart,
 			})
 			else nil,

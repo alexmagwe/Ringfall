@@ -22,6 +22,17 @@ function MazeNav.bandOf(cellKey: number): number
 	return cellKey // 1000
 end
 
+-- District index of a band: 0 = hub (band 0), 1 = inner (bands 1-4), 2 = middle
+-- (bands 5-8), 3 = outer (bands 9-12). Shared here (not duplicated per-file)
+-- because both MazeService (carving/gates) and CheckpointService (respawn
+-- tracking) need the exact same mapping.
+function MazeNav.districtOf(band: number): number
+	if band == 0 then
+		return 0
+	end
+	return math.floor((band - 1) / 4) + 1
+end
+
 -- Outermost band index in the current maze (0 if empty).
 function MazeNav.maxBand(): number
 	local m = 0

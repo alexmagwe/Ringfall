@@ -18,10 +18,13 @@ return ByteNet.defineNamespace("Maze", function()
 		}),
 
 		-- Server -> Client: fired when the player touches ExitGate. Carries
-		-- the authoritative elapsed time (server clock, not client-guessed).
+		-- the authoritative elapsed time (server clock, not client-guessed) and
+		-- the player's personal best.
 		Escaped = ByteNet.definePacket({
 			value = ByteNet.struct({
 				timeSeconds = ByteNet.float32,
+				bestSeconds = ByteNet.float32, -- 0 = no previous best
+				isNewBest = ByteNet.bool,
 			}),
 			reliabilityType = "reliable",
 		}),

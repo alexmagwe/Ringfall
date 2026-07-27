@@ -33,6 +33,8 @@ local SECTORS = {
 	[7] = 24, [8] = 48, [9] = 48, [10] = 48, [11] = 48, [12] = 48,
 }
 local BANDS = 12 -- outermost band index
+-- Always start in the outer rings — a run should be a long haul inward.
+local SPAWN_MIN_BAND = BANDS - 2 -- 10
 
 local WALL_H = 40
 local WALL_T = 3
@@ -41,6 +43,8 @@ local EXTRA_LOOPS = 36
 local FLOOR_Y = 0 -- top of the floor
 local WALL_COLOR = Color3.fromRGB(70, 84, 90)
 local FLOOR_COLOR = Color3.fromRGB(48, 57, 62)
+local GATE_HEIGHT = WALL_H * 0.6 -- tall enough to read as a landmark, not full wall height
+local GATE_COLOR = Color3.fromRGB(255, 195, 60)
 
 local TWO_PI = math.pi * 2
 
@@ -85,12 +89,19 @@ local function neighbours(b: number, s: number): { { number } }
 	return nbrs
 end
 
--- Recursive backtracker over the polar cell graph, from the hub outward.
-local function carve(rng: Random): { [string]: boolean }
-	local passages: { [string]: boolean } = {}
+-- Recursive backtracker restricted to bands [bandLo, bandHi]. Never traverses
+-- outside that range, so the result is a maze that spans exactly one district.
+-- Carving districts independently (then opening exactly one passage between
+-- adjacent districts, see `openGate`) guarantees connectivity by construction —
+-- carving the whole maze first and closing all-but-one boundary passage
+-- afterward can orphan whole regions, since the single spanning tree may cross
+-- a boundary more than once and the sub-trees hanging off those extra
+-- crossings are then unreachable.
+local function carveRange(rng: Random, passages: { [string]: boolean }, bandLo: number, bandHi: number)
 	local visited: { [number]: boolean } = {}
-	local stack = { { 0, 0 } }
-	visited[cellKey(0, 0)] = true
+	local startS = rng:NextInteger(0, sectorsOf(bandLo) - 1)
+	local stack = { { bandLo, startS } }
+	visited[cellKey(bandLo, startS)] = true
 
 	while #stack > 0 do
 		local cur = stack[#stack]
@@ -98,7 +109,7 @@ local function carve(rng: Random): { [string]: boolean }
 
 		local candidates = {}
 		for _, n in neighbours(cb, cs) do
-			if not visited[cellKey(n[1], n[2])] then
+			if n[1] >= bandLo and n[1] <= bandHi and not visited[cellKey(n[1], n[2])] then
 				table.insert(candidates, n)
 			end
 		end
@@ -113,11 +124,27 @@ local function carve(rng: Random): { [string]: boolean }
 		visited[cellKey(n[1], n[2])] = true
 		table.insert(stack, { n[1], n[2] })
 	end
+end
 
-	return passages
+-- District band ranges, inner -> outer (band 0/the hub needs no carve — the
+-- {1,0} gate boundary is what connects it).
+local DISTRICT_BANDS = { { 1, 4 }, { 5, 8 }, { 9, 12 } }
+-- Sealed boundaries between adjacent districts, as { outerBand, innerBand }.
+local GATE_BOUNDARIES = { { 1, 0 }, { 5, 4 }, { 9, 8 } }
+
+-- Opens the single passage across one district boundary and returns the
+-- (outerBand, sector) it was cut at, so the caller can place the gate model.
+local function openGate(rng: Random, passages: { [string]: boolean }, outerBand: number, innerBand: number): number
+	local s = rng:NextInteger(0, sectorsOf(outerBand) - 1)
+	local ratioIn = sectorsOf(outerBand) / sectorsOf(innerBand)
+	local innerS = math.floor(s / ratioIn)
+	passages[pairKey(outerBand, s, innerBand, innerS)] = true
+	return s
 end
 
 -- Knock out extra passages so the maze has loops (shortcuts), not one solution.
+-- Never across a district boundary — that would silently re-open a sealed
+-- district and defeat the whole feature.
 local function addLoops(rng: Random, passages: { [string]: boolean })
 	local added, attempts = 0, 0
 	while added < EXTRA_LOOPS and attempts < 5000 do
@@ -126,6 +153,9 @@ local function addLoops(rng: Random, passages: { [string]: boolean })
 		local s = rng:NextInteger(0, sectorsOf(b) - 1)
 		local nbrs = neighbours(b, s)
 		local n = nbrs[rng:NextInteger(1, #nbrs)]
+		if MazeNav.districtOf(b) ~= MazeNav.districtOf(n[1]) then
+			continue -- never re-open a sealed district boundary
+		end
 		local key = pairKey(b, s, n[1], n[2])
 		if not passages[key] then
 			passages[key] = true
@@ -176,6 +206,63 @@ local function buildRadial(theta: number, r0: number, r1: number, parent: Instan
 	buildWallBox(mid, (p1 - p0).Unit, (r1 - r0) + WALL_T, parent, name)
 end
 
+-- A lit archway marking the single opening in a district boundary: two
+-- vertical pillars flanking the passage plus a lintel across the top. Decor
+-- and navigation only (compass targeting, checkpoint respawn) — no Touched
+-- handler; passing through is exactly like passing through any other gap in a
+-- wall. `entersDistrict` is the district on the inner side of this boundary.
+local function buildGate(outerBand: number, gateSector: number, entersDistrict: number, parent: Instance)
+	local sc = sectorsOf(outerBand)
+	local step = TWO_PI / sc
+	local a0 = gateSector * step
+	local a1 = (gateSector + 1) * step
+	local r = RADII[outerBand]
+
+	local p0 = polar(r, a0, GATE_HEIGHT / 2)
+	local p1 = polar(r, a1, GATE_HEIGHT / 2)
+
+	-- Floor-level centre of the OPENING (mid-sector), published on every part of
+	-- the gate. The pillars sit on the opening's two edges, where the arc wall
+	-- resumes — so a consumer that just reads a gate part's own Position (and
+	-- gets whichever child it found first) would land half inside that wall.
+	-- CheckpointService respawns players here, so this must be the gap centre.
+	local gateCentre = polar(r, (a0 + a1) / 2, 0)
+
+	local function tagGate(part: BasePart)
+		part.Material = Enum.Material.Neon
+		part.CanCollide = false
+		part:SetAttribute("EntersDistrict", entersDistrict)
+		part:SetAttribute("GateCenter", gateCentre)
+	end
+
+	local function pillar(pos: Vector3)
+		tagGate(newPart(Vector3.new(WALL_T, GATE_HEIGHT, WALL_T), CFrame.new(pos), GATE_COLOR, parent, "Gate"))
+	end
+
+	pillar(p0)
+	pillar(p1)
+
+	-- Lintel: spans the gap at the pillar tops.
+	local lintelDir = p1 - p0
+	local lintelMid = Vector3.new((p0.X + p1.X) / 2, GATE_HEIGHT, (p0.Z + p1.Z) / 2)
+	local lintel = newPart(
+		Vector3.new(lintelDir.Magnitude + WALL_T, WALL_T, WALL_T),
+		CFrame.fromMatrix(lintelMid, lintelDir.Unit, Vector3.yAxis),
+		GATE_COLOR,
+		parent,
+		"Gate"
+	)
+	tagGate(lintel)
+
+	-- One light at the lintel is enough to read the archway through the fog
+	-- from either side, in line of sight.
+	local light = Instance.new("PointLight")
+	light.Color = GATE_COLOR
+	light.Range = 32
+	light.Brightness = 2
+	light.Parent = lintel
+end
+
 -- BFS over passages from (sb, ss); returns a reached-cell set.
 local function reachFrom(passages: { [string]: boolean }, sb: number, ss: number): { [number]: boolean }
 	local reached: { [number]: boolean } = { [cellKey(sb, ss)] = true }
@@ -194,9 +281,19 @@ local function reachFrom(passages: { [string]: boolean }, sb: number, ss: number
 	return reached
 end
 
-function MazeService.Start()
-	local rng = Random.new(Constants.SEED)
-	local passages = carve(rng)
+-- Builds (or rebuilds) the whole maze from `seed`. Safe to call repeatedly:
+-- clears the existing Maze folder, repositions the existing SpawnLocation,
+-- and fully repopulates MazeNav.
+function MazeService.rebuild(seed: number)
+	local rng = Random.new(seed)
+	local passages: { [string]: boolean } = {}
+	for _, range in DISTRICT_BANDS do
+		carveRange(rng, passages, range[1], range[2])
+	end
+	local gateSectors: { number } = {}
+	for i, g in GATE_BOUNDARIES do
+		gateSectors[i] = openGate(rng, passages, g[1], g[2])
+	end
 	addLoops(rng, passages)
 
 	local mazeFolder = workspace:FindFirstChild("Maze")
@@ -262,14 +359,27 @@ function MazeService.Start()
 		end
 	end
 
-	-- Spawn: dropped in at a random interior cell in an outer-ish band (a real
-	-- journey inward remains), facing the centre. A separate unseeded Random so
-	-- the drop location varies each session while the maze stays seed-deterministic.
-	local spawnRng = Random.new()
-	-- Middle rings only: not band 1-2 (right on the goal) nor the outermost band
-	-- (which hugs the perimeter and reads as "the edge"). Clearly surrounded.
-	local spawnBand = spawnRng:NextInteger(3, math.max(3, BANDS - 2))
-	local spawnSector = spawnRng:NextInteger(0, sectorsOf(spawnBand) - 1)
+	-- Gates: own folder (NOT under Maze — `mazeFolder:ClearAllChildren()` above
+	-- would destroy them along with everything else). One lit archway per
+	-- sealed district boundary, at the single passage `openGate` cut.
+	local gatesFolder = workspace:FindFirstChild("Gates")
+	if gatesFolder then
+		gatesFolder:ClearAllChildren()
+	else
+		gatesFolder = Instance.new("Folder")
+		gatesFolder.Name = "Gates"
+		gatesFolder.Parent = workspace
+	end
+	for i, g in GATE_BOUNDARIES do
+		local outerBand, innerBand = g[1], g[2]
+		buildGate(outerBand, gateSectors[i], MazeNav.districtOf(innerBand), gatesFolder)
+	end
+
+	-- Spawn: dropped in at a random interior cell in the outer rings (a real
+	-- journey inward remains), facing the centre. Uses the same seeded `rng` so
+	-- a seed fully determines the round.
+	local spawnBand = rng:NextInteger(SPAWN_MIN_BAND, BANDS) -- 10..12
+	local spawnSector = rng:NextInteger(0, sectorsOf(spawnBand) - 1)
 	local spawnMidR = (RADII[spawnBand] + RADII[spawnBand + 1]) / 2
 	local spawnAngle = (spawnSector + 0.5) * (TWO_PI / sectorsOf(spawnBand))
 	local spawnPos = polar(spawnMidR, spawnAngle, 4)
@@ -335,9 +445,20 @@ function MazeService.Start()
 	end
 	MazeNav.ready = true
 
-	print(`[Maze] circular seed={Constants.SEED} bands={BANDS} cells={total} spawn=(b{spawnBand},s{spawnSector})`)
+	print(`[Maze] circular seed={seed} bands={BANDS} cells={total} spawn=(b{spawnBand},s{spawnSector})`)
 
+	workspace:SetAttribute("MazeSeed", seed)
+	-- Monotonic rebuild counter. Downstream features re-wire to the new Maze
+	-- geometry (ExitGate, EscapeZone, nav graph) whenever this changes; it must
+	-- be incremented last, after MazeNav is fully repopulated, so listeners that
+	-- react to it see a consistent graph.
+	workspace:SetAttribute("MazeGeneration", (workspace:GetAttribute("MazeGeneration") or 0) + 1)
+end
+
+function MazeService.Start()
+	MazeService.rebuild(Constants.SEED)
 	-- Downstream features (EscapeService) wait on this before reading positions.
+	-- Set exactly once and never cleared/reset — other services :Wait() on it.
 	workspace:SetAttribute("MazeReady", true)
 end
 

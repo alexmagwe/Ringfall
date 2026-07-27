@@ -15,13 +15,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage.Packages.React)
 local ui = require(ReplicatedStorage.Shared.Boil).ui
 
-local PANEL_SIZE = UDim2.fromOffset(520, 320)
+local PANEL_SIZE = UDim2.fromOffset(520, 380)
 local TITLE_TEXT_SIZE = 72
 local TIME_TEXT_SIZE = 56
+local BEST_TEXT_SIZE = 24
+local NEW_BEST_TEXT_SIZE = 28
 local BUTTON_SIZE = UDim2.fromOffset(280, 72)
+local NEW_BEST_COLOR = Color3.fromRGB(120, 230, 150)
+local BEST_COLOR = Color3.fromRGB(170, 180, 190)
 
 type Props = {
 	timeSeconds: number,
+	bestSeconds: number,
+	isNewBest: boolean,
 	onRestart: () -> (),
 }
 
@@ -72,6 +78,25 @@ return function(props: Props)
 				layoutOrder = 2,
 			}),
 
+			BestStamp = if props.isNewBest
+				then React.createElement(ui.Text, {
+					text = "NEW BEST",
+					textSize = NEW_BEST_TEXT_SIZE,
+					weight = Enum.FontWeight.Heavy,
+					color = NEW_BEST_COLOR,
+					size = UDim2.new(1, 0, 0, NEW_BEST_TEXT_SIZE + 6),
+					layoutOrder = 3,
+				})
+				elseif props.bestSeconds > 0
+					then React.createElement(ui.Text, {
+						text = "BEST " .. formatTime(props.bestSeconds),
+						textSize = BEST_TEXT_SIZE,
+						color = BEST_COLOR,
+						size = UDim2.new(1, 0, 0, BEST_TEXT_SIZE + 6),
+						layoutOrder = 3,
+					})
+					else nil,
+
 			RestartButton = React.createElement("TextButton", {
 				Size = BUTTON_SIZE,
 				BackgroundColor3 = Color3.fromRGB(20, 20, 20),
@@ -85,7 +110,7 @@ return function(props: Props)
 					Enum.FontWeight.Bold,
 					Enum.FontStyle.Normal
 				),
-				LayoutOrder = 3,
+				LayoutOrder = 4,
 				[React.Event.Activated] = function()
 					props.onRestart()
 				end,
