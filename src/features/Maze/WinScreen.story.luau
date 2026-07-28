@@ -1,7 +1,7 @@
 --!nonstrict
--- UI Labs story for the escape win screen. Toggle `isNewBest` and slide the
--- times to check both stamp states render without the layout jumping or text
--- clipping (WinScreen is a dumb view — see docs/game/headless-core.md).
+-- UI Labs story for the round-results board. Slide the hauls to check the
+-- ranking sorts highest-first and that the local player's row highlights
+-- (WinScreen is a dumb view — see docs/game/headless-core.md).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -11,23 +11,26 @@ local UILabs = require(ReplicatedStorage.Packages.UILabs)
 local WinScreen = require(ReplicatedStorage.Features.Maze.WinScreen)
 
 return {
-	summary = "Escape win screen — time, personal best, and the NEW BEST stamp.",
+	summary = "Round-results board — winner and every player's banked haul.",
 	react = React,
 	reactRoblox = ReactRoblox,
 
 	controls = {
-		isNewBest = false,
-		timeSeconds = UILabs.Slider(42.3, 0, 300, 0.1),
-		bestSeconds = UILabs.Slider(38.1, 0, 300, 0.1),
+		yourHaul = UILabs.Slider(320, 0, 2000, 10),
+		rivalHaul = UILabs.Slider(880, 0, 2000, 10),
+		youWon = false,
 	},
 
 	story = function(props)
 		local c = props.controls
 		return React.createElement(WinScreen, {
-			timeSeconds = c.timeSeconds,
-			bestSeconds = c.bestSeconds,
-			isNewBest = c.isNewBest,
-			onRestart = function() end,
+			winnerName = if c.youWon then "You" else "Runner_47",
+			hauls = {
+				{ name = "You", haul = c.yourHaul },
+				{ name = "Runner_47", haul = c.rivalHaul },
+				{ name = "Runner_12", haul = 90 },
+			},
+			localName = "You",
 		})
 	end,
 }

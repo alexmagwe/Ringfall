@@ -38,23 +38,38 @@ local function App()
 	local running, setRunning = React.useState(false)
 	local elapsed, setElapsed = React.useState(0)
 	local startClock, setStartClock = React.useState(nil :: number?)
-	local winState, setWinState = React.useState(nil :: { timeSeconds: number, bestSeconds: number, isNewBest: boolean }?)
+	local results, setResults =
+		React.useState(nil :: { winnerName: string, hauls: { { name: string, haul: number } } }?)
+	local countdown, setCountdown = React.useState(nil :: number?)
 
 	-- One-time packet subscriptions. ByteNet's `listen` has no unsubscribe,
 	-- but App mounts exactly once for the client's whole session, so a
 	-- single registration is correct (not a leak).
 	React.useEffect(function()
 		Net.RunStarted.listen(function()
-			setWinState(nil)
 			setElapsed(0)
 			setStartClock(os.clock())
 			setRunning(true)
 		end)
-		Net.Escaped.listen(function(payload: { timeSeconds: number, bestSeconds: number, isNewBest: boolean })
+		-- Staging countdown, and the cue to clear the previous round's board.
+		Net.RoundState.listen(function(payload: { state: string, secondsRemaining: number })
+			if payload.state ~= "Staging" then
+				setCountdown(nil)
+				return
+			end
+			setResults(nil)
+			setRunning(false)
+			setElapsed(0)
+			setStartClock(nil)
+			setCountdown(payload.secondsRemaining)
+			EscapeCinematic.stop()
+		end)
+		-- Round over: play the pull-back over the maze, then show the board.
+		Net.RoundEnded.listen(function(payload: { winnerName: string, hauls: { { name: string, haul: number } } })
 			setRunning(false)
 			task.spawn(function()
 				EscapeCinematic.play()
-				setWinState(payload)
+				setResults(payload)
 			end)
 		end)
 		return nil
@@ -74,15 +89,6 @@ local function App()
 			connection:Disconnect()
 		end
 	end, { running, startClock } :: { any })
-
-	local function onRestart()
-		setRunning(false)
-		setWinState(nil)
-		setElapsed(0)
-		setStartClock(nil)
-		EscapeCinematic.stop()
-		Net.Restart.send(nil)
-	end
 
 	return React.createElement("Frame", {
 		Size = UDim2.fromScale(1, 1),
@@ -104,12 +110,31 @@ local function App()
 			}),
 		}),
 
-		WinScreenHost = if winState ~= nil
+		-- Staging countdown. Without this the player stands in a sealed room
+		-- with no idea the door is about to open.
+		Countdown = if countdown ~= nil
+			then React.createElement("TextLabel", {
+				Size = UDim2.fromOffset(520, 60),
+				Position = UDim2.fromScale(0.5, 0.42),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				Text = if countdown > 0
+					then string.format("DOORS OPEN IN %d", countdown)
+					else "GO",
+				TextColor3 = Color3.fromRGB(255, 235, 190),
+				TextSize = 44,
+				FontFace = TIMER_FONT,
+				ZIndex = 60,
+			}, {
+				UIStroke = React.createElement("UIStroke", { Thickness = 2 }),
+			})
+			else nil,
+
+		ResultsHost = if results ~= nil
 			then React.createElement(WinScreen, {
-				timeSeconds = winState.timeSeconds,
-				bestSeconds = winState.bestSeconds,
-				isNewBest = winState.isNewBest,
-				onRestart = onRestart,
+				winnerName = results.winnerName,
+				hauls = results.hauls,
+				localName = Players.LocalPlayer.Name,
 			})
 			else nil,
 	})

@@ -1,46 +1,93 @@
 --!strict
--- Pure/dumb React component for the escape win screen. Owns no networking —
--- UIController mounts this when it hears the Escaped packet and unmounts it
--- when the player restarts. Follows the Notes feature's `.ui.luau` shape
--- (createElement style, ui.* primitives, no data fetching in the component).
+-- Pure/dumb React component for the round-results board. Owns no networking —
+-- UIController mounts this when it hears the RoundEnded packet and unmounts it
+-- when the next round's countdown starts. Follows the Notes feature's
+-- `.ui.luau` shape (createElement style, ui.* primitives, no data fetching).
 --
--- Full-screen dim overlay + a centered dark ui.Panel (CLAUDE.md: new feature
--- UIs anchor at screen center). No custom styling beyond that dark panel and
--- white text, per the plan — RUN IT BACK is a plain TextButton, not the
--- colorful gem ui.Button, since a win screen isn't the place for a gem-variant
--- accent color.
+-- There is no button: rounds restart automatically (see docs/game/Escape.md),
+-- so this is a passive scoreboard that dismisses itself. Full-screen dim
+-- overlay + a centered dark ui.Panel, per CLAUDE.md's centre-by-default rule.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage.Packages.React)
 local ui = require(ReplicatedStorage.Shared.Boil).ui
 
-local PANEL_SIZE = UDim2.fromOffset(520, 380)
-local TITLE_TEXT_SIZE = 72
-local TIME_TEXT_SIZE = 56
-local BEST_TEXT_SIZE = 24
-local NEW_BEST_TEXT_SIZE = 28
-local BUTTON_SIZE = UDim2.fromOffset(280, 72)
-local NEW_BEST_COLOR = Color3.fromRGB(120, 230, 150)
-local BEST_COLOR = Color3.fromRGB(170, 180, 190)
+local PANEL_SIZE = UDim2.fromOffset(560, 420)
+local TITLE_TEXT_SIZE = 56
+local WINNER_TEXT_SIZE = 28
+local ROW_TEXT_SIZE = 22
+local ROW_HEIGHT = 30
+local WINNER_COLOR = Color3.fromRGB(120, 230, 150)
+local YOU_COLOR = Color3.fromRGB(255, 220, 130)
+local ROW_COLOR = Color3.fromRGB(200, 208, 216)
+
+export type HaulRow = { name: string, haul: number }
 
 type Props = {
-	timeSeconds: number,
-	bestSeconds: number,
-	isNewBest: boolean,
-	onRestart: () -> (),
+	winnerName: string,
+	hauls: { HaulRow },
+	-- Local player's name, so their row can be picked out of the list.
+	localName: string,
 }
 
--- "M:SS.d" — minutes (no leading zero), 2-digit seconds, 1 decimal digit.
-local function formatTime(totalSeconds: number): string
-	local minutes = math.floor(totalSeconds / 60)
-	local remainder = totalSeconds - minutes * 60
-	local wholeSeconds = math.floor(remainder)
-	local tenths = math.floor((remainder - wholeSeconds) * 10)
-	return string.format("%d:%02d.%d", minutes, wholeSeconds, tenths)
-end
-
 return function(props: Props)
+	-- Highest haul first; the scoreboard reads as a ranking.
+	local rows = table.clone(props.hauls)
+	table.sort(rows, function(a, b)
+		return a.haul > b.haul
+	end)
+
+	-- One children table: react-lua's createElement takes children as a single
+	-- keyed table, so the rows are merged in here rather than passed separately.
+	local children: { [string]: any } = {
+		UIListLayout = React.createElement("UIListLayout", {
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			FillDirection = Enum.FillDirection.Vertical,
+		}),
+
+		Title = React.createElement(ui.Text, {
+			text = "VAULT EXTRACTED",
+			textSize = TITLE_TEXT_SIZE,
+			weight = Enum.FontWeight.Heavy,
+			shadow = true,
+			size = UDim2.new(1, 0, 0, TITLE_TEXT_SIZE + 10),
+			layoutOrder = 1,
+		}),
+
+		Winner = React.createElement(ui.Text, {
+			text = props.winnerName .. " got out with it",
+			textSize = WINNER_TEXT_SIZE,
+			weight = Enum.FontWeight.Bold,
+			color = WINNER_COLOR,
+			size = UDim2.new(1, 0, 0, WINNER_TEXT_SIZE + 8),
+			layoutOrder = 2,
+		}),
+
+		Banked = React.createElement(ui.Text, {
+			text = "BANKED THIS ROUND",
+			textSize = ROW_TEXT_SIZE,
+			color = ROW_COLOR,
+			size = UDim2.new(1, 0, 0, ROW_TEXT_SIZE + 14),
+			layoutOrder = 9,
+		}),
+	}
+
+	for i, row in rows do
+		local isYou = row.name == props.localName
+		children["Row" .. i] = React.createElement(ui.Text, {
+			text = string.format("%s   %d", row.name, row.haul),
+			textSize = ROW_TEXT_SIZE,
+			color = if isYou then YOU_COLOR else ROW_COLOR,
+			weight = if isYou then Enum.FontWeight.Bold else Enum.FontWeight.Regular,
+			size = UDim2.new(1, 0, 0, ROW_HEIGHT),
+			layoutOrder = 10 + i,
+		})
+	end
+
 	return React.createElement("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
@@ -52,77 +99,6 @@ return function(props: Props)
 			size = PANEL_SIZE,
 			position = UDim2.fromScale(0.5, 0.5),
 			anchorPoint = Vector2.new(0.5, 0.5),
-		}, {
-			UIListLayout = React.createElement("UIListLayout", {
-				Padding = UDim.new(0, 24),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				VerticalAlignment = Enum.VerticalAlignment.Center,
-				FillDirection = Enum.FillDirection.Vertical,
-			}),
-
-			Title = React.createElement(ui.Text, {
-				text = "ESCAPED",
-				textSize = TITLE_TEXT_SIZE,
-				weight = Enum.FontWeight.Heavy,
-				shadow = true,
-				size = UDim2.new(1, 0, 0, TITLE_TEXT_SIZE + 10),
-				layoutOrder = 1,
-			}),
-
-			Time = React.createElement(ui.Text, {
-				text = formatTime(props.timeSeconds),
-				textSize = TIME_TEXT_SIZE,
-				weight = Enum.FontWeight.Bold,
-				size = UDim2.new(1, 0, 0, TIME_TEXT_SIZE + 6),
-				layoutOrder = 2,
-			}),
-
-			BestStamp = if props.isNewBest
-				then React.createElement(ui.Text, {
-					text = "NEW BEST",
-					textSize = NEW_BEST_TEXT_SIZE,
-					weight = Enum.FontWeight.Heavy,
-					color = NEW_BEST_COLOR,
-					size = UDim2.new(1, 0, 0, NEW_BEST_TEXT_SIZE + 6),
-					layoutOrder = 3,
-				})
-				elseif props.bestSeconds > 0
-					then React.createElement(ui.Text, {
-						text = "BEST " .. formatTime(props.bestSeconds),
-						textSize = BEST_TEXT_SIZE,
-						color = BEST_COLOR,
-						size = UDim2.new(1, 0, 0, BEST_TEXT_SIZE + 6),
-						layoutOrder = 3,
-					})
-					else nil,
-
-			RestartButton = React.createElement("TextButton", {
-				Size = BUTTON_SIZE,
-				BackgroundColor3 = Color3.fromRGB(20, 20, 20),
-				BackgroundTransparency = 0.1,
-				BorderSizePixel = 0,
-				Text = "RUN IT BACK",
-				TextColor3 = Color3.fromRGB(255, 255, 255),
-				TextSize = 32,
-				FontFace = Font.new(
-					"rbxasset://fonts/families/SourceSansPro.json",
-					Enum.FontWeight.Bold,
-					Enum.FontStyle.Normal
-				),
-				LayoutOrder = 4,
-				[React.Event.Activated] = function()
-					props.onRestart()
-				end,
-			}, {
-				UIStroke = React.createElement("UIStroke", {
-					Thickness = 2,
-					Color = Color3.fromRGB(255, 255, 255),
-				}),
-				UICorner = React.createElement("UICorner", {
-					CornerRadius = UDim.new(0, 8),
-				}),
-			}),
-		}),
+		}, children),
 	})
 end
