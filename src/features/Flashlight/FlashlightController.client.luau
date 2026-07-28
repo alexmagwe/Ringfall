@@ -14,9 +14,14 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
--- Dim, short baseline vs the full scavenged beam.
-local BASELINE_RANGE, BASELINE_BRIGHTNESS = 60, 1.0
-local FULL_RANGE, FULL_BRIGHTNESS = 140, 3.5
+-- Dim, short baseline vs the full scavenged beam. The baseline is a floor for
+-- playability, not a substitute: the pickup still roughly doubles your reach and
+-- doubles the brightness, which is what keeps a detour for it worth making.
+local BASELINE_RANGE, BASELINE_BRIGHTNESS = 95, 1.8
+local FULL_RANGE, FULL_BRIGHTNESS = 190, 4.0
+-- Studs ahead of the character's chest to place the bulb. Must clear the body
+-- (a character is ~2 studs deep) or the player lights themselves up.
+local MUZZLE_FORWARD = 3
 
 local FlashlightController = {}
 
@@ -50,9 +55,19 @@ function FlashlightController.Start()
 	applyBeam()
 
 	RunService.RenderStepped:Connect(function()
-		-- Front face points along +LookVector once we orient the part to the camera.
 		local cf = camera.CFrame
-		emitter.CFrame = CFrame.lookAt(cf.Position, cf.Position + cf.LookVector)
+		-- Emit from just IN FRONT of the character, aimed where the camera looks.
+		-- Two earlier placements both lit the player up like a lantern: at the
+		-- camera, the character stands ~13 studs down the middle of its own
+		-- 55-degree cone; at the chest, their own arms and legs sit right on top
+		-- of the bulb. MUZZLE_FORWARD pushes it clear of the body so nothing of
+		-- the player's is inside the cone.
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local origin = if root
+			then (root :: BasePart).Position + Vector3.new(0, 1.5, 0) + cf.LookVector * MUZZLE_FORWARD
+			else cf.Position
+		emitter.CFrame = CFrame.lookAt(origin, origin + cf.LookVector)
 	end)
 end
 

@@ -51,5 +51,6 @@ for how findable it is.
 ## Constants (in the controller)
 
 `Angle = 55`, warm `Color` (240, 238, 220), `Shadows = true`; beam strength is
-`BASELINE_RANGE`/`BASELINE_BRIGHTNESS` (60 / 1.0) upgrading to
-`FULL_RANGE`/`FULL_BRIGHTNESS` (140 / 3.5) on pickup.
+`BASELINE_RANGE`/`BASELINE_BRIGHTNESS` (95 / 1.8) upgrading to
+`FULL_RANGE`/`FULL_BRIGHTNESS` (190 / 4.0) on pickup — the pickup roughly
+doubles both, which is what keeps a detour for it worth making.
