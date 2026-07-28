@@ -30,20 +30,35 @@ Free-for-all — one player is simply a race with nobody else in it, so it plays
 solo. Nothing carries between rounds except your record, which is what keeps a
 loss a loss.
 
-## Studio assets (optional)
+## Assets
 
-Rojo syncs code only, so none of the game art lives in this repo. The game runs
-without any of it — supply these to replace the placeholders:
+**Everything a clone needs is in the repo.** Open a blank place, sync, and you
+get the real game — art included. There is no manual Studio setup.
 
-| Where | What |
-| ----- | ---- |
-| `ServerStorage.PickupModels` | art for the pickups — a `Model`, `Tool` or single part per kind, named to match the `model` field in `Pickups/Constants.luau` |
-| `Workspace.MusicTracks` | four `Sound`s named `STAGING`, `DESCENT`, `ALARM`, `ROUND_END_STING` |
+| Asset | Where it lives | How it gets in |
+| ----- | -------------- | -------------- |
+| Pickup art | `assets/PickupModels.rbxm` | Rojo syncs it to `ServerStorage.PickupModels` |
+| Music | ids in `Music/Constants.luau` | played by asset id at runtime |
+| `SpawnLocation` | — | created by `MazeService` if the place has none |
+| Maze, staging room, vault, hunters | — | all built procedurally in code |
 
-None of these are mandatory — the game boots without them. Missing pickup art
-falls back to coloured neon balls, missing music cues stay silent, and a
-`SpawnLocation` is created automatically if the place has none (the maze then
-repositions it into the staging room every round).
+### Changing the pickup art
+
+`ServerStorage.PickupModels` is **Rojo-managed**, so edits made in Studio are
+overwritten on the next sync. To change a model: edit it in Studio, then
+re-export over the file —
+
+```
+Right-click ServerStorage.PickupModels → Save to File… → assets/PickupModels.rbxm
+```
+
+— and commit the result. Each child's name must match the `model` field of a
+`SPAWNS` entry in `Pickups/Constants.luau`; a mismatch silently falls back to a
+coloured neon ball rather than erroring, so a typo looks like "the model didn't
+load". A `Model`, `Tool` or a single part all work.
+
+`.rbxm` is binary, so it won't diff or merge — treat it as one indivisible file
+and don't edit it from two branches at once.
 
 Roblox audio and animation privacy applies: assets must be owned by the
 experience's creator (or group), or licensed from the Creator Store. A random

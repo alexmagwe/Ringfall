@@ -20,7 +20,7 @@ return {
 	-- never fails to place).
 	SPAWNS = {
 		{ kind = "Gun", model = "GatlingLaser", count = 1, color = Color3.fromRGB(230, 180, 60) },
-		{ kind = "Ammo", model = "Battery", count = 4, color = Color3.fromRGB(240, 130, 60), amount = 6 },
+		{ kind = "Ammo", model = "Ammo", count = 4, color = Color3.fromRGB(240, 130, 60), amount = 6 },
 		{ kind = "Stamina", model = "StaminaBoost", count = 1, color = Color3.fromRGB(120, 230, 150), amount = 50 },
 		{ kind = "Flashlight", model = "Flashlight", count = 1, color = Color3.fromRGB(255, 245, 200) },
 		{ kind = "HealthKit", model = "Emergency MedKit", count = 3, color = Color3.fromRGB(230, 70, 70), amount = 50 },

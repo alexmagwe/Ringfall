@@ -15,6 +15,10 @@
       "ServerPackages": { "$path": "ServerPackages" }
     },
 
+    "ServerStorage": {
+      "PickupModels": { "$path": "assets/PickupModels.rbxm" }
+    },
+
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "Client":   { "$path": "src/client" },
