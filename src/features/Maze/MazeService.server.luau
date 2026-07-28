@@ -575,9 +575,25 @@ function MazeService.rebuild(seed: number)
 	-- made above. Also positions SpawnLocation (inside the room, facing back
 	-- down the corridor) — every run is now a full descent from outside.
 	local spawnCFrame = buildStaging(stagingTheta)
-	local spawnLocationInstance = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
-	assert(spawnLocationInstance, "MazeService: no SpawnLocation found in workspace")
-	local spawnLocation = spawnLocationInstance :: SpawnLocation
+	-- Create one if the place has none, rather than asserting. A blank place —
+	-- which is exactly what someone gets after `git clone` plus a fresh Studio
+	-- file, since the .rbxl is gitignored — has no SpawnLocation, and a hard
+	-- assert here meant the game died on startup before anything else could
+	-- run. Everything else the game wants from Studio degrades gracefully
+	-- (missing pickup art falls back to neon balls, missing music stays
+	-- silent); this was the one asset that stopped it dead.
+	local spawnLocation = workspace:FindFirstChildWhichIsA("SpawnLocation", true) :: SpawnLocation?
+	if not spawnLocation then
+		local created = Instance.new("SpawnLocation")
+		created.Name = "SpawnLocation"
+		created.Size = Vector3.new(12, 1, 12)
+		created.Anchored = true
+		created.Duration = 0 -- no spawn forcefield; it reads as the player glowing
+		created.Parent = workspace
+		spawnLocation = created
+		warn("[Maze] no SpawnLocation in Workspace — created one. See README > Studio assets.")
+	end
+	assert(spawnLocation, "MazeService: SpawnLocation missing after creation")
 	spawnLocation.CFrame = spawnCFrame
 	-- Hide the spawn pad itself: the staging room IS the waiting area, and a
 	-- floating Roblox spawn plate with its star decal reads as leftover

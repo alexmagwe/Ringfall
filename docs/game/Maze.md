@@ -130,10 +130,18 @@ Gates are consumed by:
 
 ## Studio assets
 
-**None required beyond `workspace.SpawnLocation`.** The user must place one
-`SpawnLocation` instance in Workspace; `MazeService` repositions it every
-rebuild rather than recreating it. Everything else (floor, walls, the
-staging room, the Vault) is built procedurally.
+**None.** Everything — floor, walls, the staging room, the Vault — is built
+procedurally.
+
+`MazeService` uses a `SpawnLocation`, and **creates one if the place has none**
+(warning to the output as it does). If you place your own, that one is reused —
+it is repositioned into the staging room every rebuild rather than recreated, so
+any properties you set on it survive.
+
+This used to be a hard `assert`, which meant a blank place — exactly what you
+get from `git clone` plus a fresh Studio file, since the `.rbxl` is gitignored —
+died on startup before anything else ran. Every other Studio asset the game
+wants degrades gracefully; this was the one that stopped it dead.
 
 ## The staging room + corridor
 

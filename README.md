@@ -30,18 +30,20 @@ Free-for-all — one player is simply a race with nobody else in it, so it plays
 solo. Nothing carries between rounds except your record, which is what keeps a
 loss a loss.
 
-## Studio assets you must supply
+## Studio assets (optional)
 
-Rojo syncs code only. A fresh clone will **not** boot without these:
+Rojo syncs code only, so none of the game art lives in this repo. The game runs
+without any of it — supply these to replace the placeholders:
 
 | Where | What |
 | ----- | ---- |
-| `Workspace` | one `SpawnLocation` (the maze repositions it every round) |
 | `ServerStorage.PickupModels` | art for the pickups — a `Model`, `Tool` or single part per kind, named to match the `model` field in `Pickups/Constants.luau` |
 | `Workspace.MusicTracks` | four `Sound`s named `STAGING`, `DESCENT`, `ALARM`, `ROUND_END_STING` |
 
-Missing pickup art falls back to coloured neon balls; missing music cues stay
-silent. Only the `SpawnLocation` is mandatory.
+None of these are mandatory — the game boots without them. Missing pickup art
+falls back to coloured neon balls, missing music cues stay silent, and a
+`SpawnLocation` is created automatically if the place has none (the maze then
+repositions it into the staging room every round).
 
 Roblox audio and animation privacy applies: assets must be owned by the
 experience's creator (or group), or licensed from the Creator Store. A random
