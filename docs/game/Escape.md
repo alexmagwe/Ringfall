@@ -1,128 +1,145 @@
 # Escape
 
-The round state machine: tracks each player's run timer, fires the round's
-network events, freezes/resets characters at the exit, and drives the
-server-wide restart. See [Maze.md](Maze.md) for the maze itself and its
-rebuild contract, and [Hunter.md](Hunter.md) for the evac-alert convergence.
+The round state machine: staging countdown → door opens → descend → vault →
+extract → maze rebuild → staging, repeating forever with **no manual button
+press**. Free-for-all — there is no per-player win anymore. Extraction only
+ends the round for whoever is carrying the vault; everyone banks their Haul
+when that happens. See [Maze.md](Maze.md) for the staging room/Vault
+geometry this drives, [Salvage.md](Salvage.md) for the Haul/Vault mechanics,
+and [Hunter.md](Hunter.md) for the alarm.
 
 Files:
 
-- `src/features/Maze/EscapeService.server.luau` — round state machine, timer,
-  win condition, restart, personal-best persistence.
+- `src/features/Maze/EscapeService.server.luau` — the round state machine:
+  `RoundState`, the staging countdown, the Door, extraction, banking, and the
+  rebuild-and-reset loop.
 - `src/features/Maze/EscapeCinematicController.client.luau` — the win-camera
-  flight. Exposes `play()` / `stop()` intent actions only; no networking.
-- `src/features/Maze/UIController.client.luau` — owns the timer HUD, mounts
-  `WinScreen.ui.luau` on win, drives the cinematic.
-- `src/features/Maze/WinScreen.ui.luau` — dumb view: time, personal best, the
-  NEW BEST stamp, and the restart button.
+  flight, played on `RoundEnded` before the results board.
+- `src/features/Maze/UIController.client.luau` — owns the timer HUD; also
+  the staging countdown, and mounts the results board on `RoundEnded`.
+- `src/features/Maze/WinScreen.ui.luau` — dumb view: the round-results board
+  (winner + every player's banked haul). No button; rounds restart automatically.
 - `src/features/Maze/PlayerData.luau` — registers the `Ringfall` PlayerData
-  template slice (`{ BestTimeSeconds = 0 }`).
-- `src/features/Maze/Net.luau` — the `Maze` packet namespace.
+  template slice (`{ BestTimeSeconds = 0 }`) — no longer written to; see
+  below.
+- `src/features/Maze/Net.luau` — the `Maze` packet namespace: `RunStarted`
+  (still live), `RoundState` and `RoundEnded` (new), `Escaped` and `Restart`
+  (kept but unused — see below).
 
 ## Round state machine
 
-Per player: `startedAt: number?`, `escaped: boolean` (module-local `state`
-table in `EscapeService`, keyed by `Player`). Reset on join and on every
-`CharacterAdded` (a new life starts the round fresh). The `Escaped` attribute
-mirrors `escaped` and is the cross-feature signal — Hunter ignores escaped
-players, LookBack stops fighting the cinematic for the camera.
+`workspace.RoundState` is a string attribute: `"Staging"` or `"Active"`.
+`EscapeService.Start()` kicks off the loop once; from there it's entirely
+self-driving:
 
-1. **Idle** — player hasn't left the spawn zone (`EscapeZone`, `ZONE_RADIUS`
-   studs around `SpawnLocation`) since spawning.
-2. **Running** — `Heartbeat` detects the character left the zone; `startedAt`
-   is set and `Net.RunStarted` fires (client starts its timer display).
-3. **Escaped** — `ExitGate.Touched` fires `onGateTouched`: debounced
-   synchronously (before any yield) against re-entrant `Touched` firings from
-   multiple character parts overlapping in one frame. Sets `Escaped = true`,
-   sets `workspace.EvacAlert` (see [Hunter.md](Hunter.md)), resolves the
-   personal best, sends `Net.Escaped`, and anchors the character.
-4. **Restart** — `Net.Restart.listen` rebuilds the maze with a fresh seed and
-   resets every connected player (not just the requester) back to Idle.
+1. **Staging.** `runStaging()` sets `RoundState = "Staging"`, closes the
+   staging room's `Door` (`CanCollide = true`), then counts down
+   `ROUND_COUNTDOWN` (15s), broadcasting `Net.RoundState` every second
+   (`{ state, secondsRemaining }`). `UIController` renders this as the
+   on-screen `DOORS OPEN IN n` countdown.
+2. **Active.** Once the countdown reaches 0, `RoundState = "Active"`, the
+   Door opens (`CanCollide = false`), and `Net.RoundState` broadcasts once
+   more with `state = "Active"`. **No timer runs here** — per the plan's
+   explicit rule, the only timer in a round is the vault alarm
+   (`SalvageService`, see [Salvage.md](Salvage.md#the-vault-and-the-alarm)),
+   and that only starts once a player actually takes the vault.
+3. **Extraction.** `ExtractPad.Touched` (the pad built inside the staging
+   room by `MazeService`, see [Maze.md](Maze.md)) fires `onExtractTouched`,
+   which does nothing unless the toucher has `HasVault == true` — everyone
+   else touching the pad, at any point, is a no-op. The first valid touch
+   sets a synchronous `extracting` debounce (guards against multiple
+   character parts touching the same frame) and calls `endRound(winner)`.
+4. **Round end (`endRound`).** In order:
+   - `RoundState = "Staging"` immediately (blocks any further extraction).
+   - Snapshot every connected player's `Haul` into a list and broadcast
+     `Net.RoundEnded { winnerName, hauls }` — the round's "report" (Phase 6
+     will convert this into persisted cash; until then this packet *is* the
+     bank).
+   - `workspace.Drops:ClearAllChildren()` — unrecovered haul/vault drops die
+     with the round (see [Salvage.md](Salvage.md#nothing-carries-between-rounds)).
+   - `MazeService.rebuild(<fresh random seed>)` — a brand new maze, staging
+     room, and Vault.
+   - For every connected player: `resetState`, clear the per-run attributes
+     (below), unanchor, and teleport back to the (new) `SpawnLocation`.
+   - `runStaging()` — the loop repeats — then the `extracting` debounce
+     clears.
+
+## Per-run attribute clears
+
+`EscapeService.resetRunAttributes`, run on every player at round end:
+
+`Checkpoint`, `CheckpointRing`, `SafeUntil`, `HasGun`, `Ammo`,
+`HasFlashlight`, `StaminaBonus`, **`Haul`, `HasVault`** (new this pass —
+nothing from a finished round survives into the next one), plus
+`Health = MaxHealth` (a teleport doesn't fire `HealthService`'s
+`CharacterAdded` refill, so this has to be explicit).
+
+**`HasCompass` is gone from this list** — the compass is standard equipment
+now, not a scavenged attribute; see [Salvage.md](Salvage.md#the-compass-is-standard-equipment).
+
+## Late joiners
+
+A player who joins (or respawns) while `RoundState == "Active"` is anchored
+in place the instant their character spawns, rather than being free to walk
+out through the (already-open) door mid-round — `onCharacterAdded` checks
+`workspace:GetAttribute("RoundState")` and anchors accordingly. They aren't
+explicitly unanchored anywhere else: the *next* round's `endRound` loop
+unconditionally unanchors and teleports **every** connected player, which
+naturally includes them the moment the current round ends. No separate
+"waiting room" state is needed.
 
 ## Packets (`Net.luau`, namespace `Maze`)
 
 | Packet | Direction | Payload | Purpose |
 | ------ | --------- | ------- | ------- |
-| `RunStarted` | S→C | none | Start the client-side timer display. |
-| `Escaped` | S→C | `{ timeSeconds, bestSeconds, isNewBest }` | Authoritative elapsed time (server clock) + personal-best result. `bestSeconds = 0` means no previous best. |
-| `Restart` | C→S | none | "RUN IT BACK". Triggers the server-wide new round. |
+| `RunStarted` | S→C | none | Still fires the first time a player's character leaves the staging room. Purely a stat now — it drives the client's cosmetic timer display, not a win condition. |
+| `RoundState` | S→C (broadcast) | `{ state, secondsRemaining }` | The round's Staging/Active state and the staging countdown. Rendered by `UIController` as the on-screen countdown; a `Staging` packet also clears the previous results board. |
+| `RoundEnded` | S→C (broadcast) | `{ winnerName, hauls: { { name, haul } } }` | Fired the instant the vault reaches the extract pad: the winner and every player's haul for the round just ended. |
+| `Escaped` | S→C | `{ timeSeconds, bestSeconds, isNewBest }` | **Unused.** Nothing sends or listens for this anymore; kept only so the namespace shape stays stable. |
+| `Restart` | C→S | none | **Unused.** The round loop is fully automatic; kept only so the namespace shape stays stable. |
 
-## Restart is server-wide, not per-player
+## Client feedback: countdown and the results board
 
-`Net.Restart.listen` calls `MazeService.rebuild` with a fresh random seed, then
-loops **every** connected player: `resetState`, clears `Checkpoint` /
-`CheckpointRing` / `SafeUntil`, unanchors, and teleports to the (new) spawn +
-`Vector3.new(0, 3, 0)`. Per-player mazes are explicitly out of scope — the maze
-is one shared world, and a restart is everyone's new round together.
+The two moments that matter most in the round are both broadcast, and
+`UIController.client.luau` renders them:
 
-**Because it is server-wide, the handler first checks the sender actually
-escaped:**
+- **`RoundState`** → a `DOORS OPEN IN n` countdown centred on screen while
+  `state == "Staging"`. Without it a player stands in a sealed room with no idea
+  the door is about to open. Receiving a `Staging` packet is also the cue to
+  clear the previous round's results board and reset the timer.
+- **`RoundEnded`** → `EscapeCinematicController` plays its camera pull-back over
+  the maze, then `WinScreen.ui.luau` shows the results board: who got out with
+  the vault, and every player's banked haul ranked highest-first with the local
+  player's row highlighted.
 
-```lua
-if not getState(player).escaped then
-	return
-end
-```
+`WinScreen` was repurposed from the old personal escape screen. It is a passive
+scoreboard with **no button** — rounds restart automatically, so it dismisses
+itself when the next `Staging` packet arrives. It stays a dumb view: props in,
+nothing else (`tools/check-views` enforces this).
 
-`Restart` is a client-sent packet, and it now re-carves the world for *everyone*.
-Without this guard any client could spam it and rebuild the maze under other
-players mid-run — a griefing vector that did not exist when restart only
-teleported the sender. If you add another world-mutating packet, guard it the
-same way: never trust the client to have earned the call.
+## What's now dead
 
-**Clearing `Checkpoint` is required, not optional.** It stores a raw
-world-space `CFrame`; after a re-carve that exact point may now be inside a
-wall, and `HunterService.catchPlayer` teleports caught players straight to
-whatever `Checkpoint` holds.
+- **`Net.Escaped`** and **`Net.Restart`** have no producer or consumer. The
+  per-player win they served was replaced by the server-wide round. They are kept
+  in `Net.luau` only so the namespace shape stays stable; delete them in a later
+  pass once nothing references them.
+- **`workspace.EvacAlert`** was set by the old `onGateTouched` and consumed by
+  `HunterService`'s "every hunter sprints for the centre" convergence. Nothing
+  sets it now — the vault alarm (`HunterAlert` / `HunterAlertPos`) does that job
+  better, since it tracks the carrier rather than a fixed point.
+- **`PlayerData.Ringfall.BestTimeSeconds`** still exists in the template but is
+  no longer written. Phase 6 replaces it with `Cash` and `BestHaul`.
 
-## Personal best
+## What's not built yet
 
-`PlayerData.luau` registers `Ringfall = { BestTimeSeconds = 0 }` (`0` = no best
-yet — ProfileStore templates don't retain `nil` keys). In `onGateTouched`:
-
-```lua
-local data = PlayerDataService.GetData(player)
-local previous = if data and data.Ringfall then data.Ringfall.BestTimeSeconds else 0
-local isNewBest = previous <= 0 or elapsed < previous
-if isNewBest then
-    PlayerDataService.SetValue(player, { "Ringfall", "BestTimeSeconds" }, elapsed)
-end
-```
-
-The `Escaped` packet is sent **after** the `SetValue` call, so the payload and
-the replica always agree. A nil profile (still loading) is treated as no best,
-never as an error.
-
-## The cinematic
-
-On `Net.Escaped`, `UIController` `task.spawn`s `EscapeCinematicController.play()`
-and only calls `setWinState` (which mounts `WinScreen`) once it resolves — so
-the panel appears over the settled shot, not mid-flight.
-
-`play()`:
-
-1. Bails immediately if the character is gone.
-2. Fades every `Hunter` model's `HunterDrone` sound to 0 volume (0.3s tween) —
-   the shot lands in silence.
-3. Sets `camera.CameraType = Scriptable` (the character is already anchored
-   server-side — the cinematic never anchors it again client-side).
-4. Tweens a `NumberValue` 0→1 over `FLIGHT_TIME` (1.8s, `Quart`/`Out`); each
-   step sets `camera.CFrame = CFrame.lookAt(startPos:Lerp(endPos, t), charPos)`
-   where `endPos = charPos + RISE` (`Vector3.new(0, 220, 260)`, captured once
-   at the start) and `charPos` is the character's position at flight start.
-   Re-checks `player.Character` every step and aborts to `stop()` if it
-   vanished mid-flight (death/leave).
-5. Holds `HOLD_TIME` (0.5s) after the tween settles, then returns.
-
-`stop()` restores `camera.CameraType = Custom` and drone volumes to `0.8`.
-`UIController.onRestart` calls `stop()` **before** sending `Net.Restart`, so the
-camera is back on the character before the round-restart teleport lands.
-
-`LookBackController` guards its render-step against `Caught` **and**
-`Escaped` attributes — without the `Escaped` half of that guard it would fight
-the cinematic for `camera.CFrame` every frame.
+- Phase 6 (cash, the store, per-run rentals) is explicitly out of scope for
+  this pass — the plan gates it behind Phases 1–5 being playable, since the
+  prices are unguessable until a run's typical haul is known. Until then,
+  `RoundEnded` reports each player's haul but nothing banks it: haul is cleared
+  with the other per-run attributes at round end.
 
 ## Studio assets
 
-**None new.** Everything here is code; `ExitGate` / `EscapeZone` are built by
-`MazeService` / `EscapeService` respectively (see [Maze.md](Maze.md)).
+**None new.** Everything here is code; `ExtractPad` / `Door` / the staging
+room are built by `MazeService`, the Vault by `MazeService` with behaviour
+from `SalvageService` (see [Maze.md](Maze.md) and [Salvage.md](Salvage.md)).

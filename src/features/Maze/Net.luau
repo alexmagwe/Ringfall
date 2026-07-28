@@ -17,9 +17,9 @@ return ByteNet.defineNamespace("Maze", function()
 			reliabilityType = "reliable",
 		}),
 
-		-- Server -> Client: fired when the player touches ExitGate. Carries
-		-- the authoritative elapsed time (server clock, not client-guessed) and
-		-- the player's personal best.
+		-- Server -> Client: legacy per-player win packet. Nothing sends this
+		-- anymore -- extraction is server-wide now (see RoundEnded below) --
+		-- kept only so old client code referencing it doesn't error.
 		Escaped = ByteNet.definePacket({
 			value = ByteNet.struct({
 				timeSeconds = ByteNet.float32,
@@ -29,10 +29,36 @@ return ByteNet.defineNamespace("Maze", function()
 			reliabilityType = "reliable",
 		}),
 
-		-- Client -> Server: "RUN IT BACK" button. Server unanchors, teleports
-		-- to spawn, and resets round state.
+		-- Client -> Server: "RUN IT BACK" button. Unused by the server-wide
+		-- round loop (EscapeService) — kept only so old client code referencing
+		-- it doesn't error; nothing currently listens for it.
 		Restart = ByteNet.definePacket({
 			value = ByteNet.nothing,
+			reliabilityType = "reliable",
+		}),
+
+		-- Server -> Client (broadcast): the round's Staging/Active state, so a
+		-- future HUD can show the staging countdown. `secondsRemaining` is only
+		-- meaningful during "Staging".
+		RoundState = ByteNet.definePacket({
+			value = ByteNet.struct({
+				state = ByteNet.string,
+				secondsRemaining = ByteNet.uint8,
+			}),
+			reliabilityType = "reliable",
+		}),
+
+		-- Server -> Client (broadcast): fired when the vault reaches the
+		-- extract pad. Carries the winner (the carrier who extracted) and
+		-- every player's banked haul for the round just ended.
+		RoundEnded = ByteNet.definePacket({
+			value = ByteNet.struct({
+				winnerName = ByteNet.string,
+				hauls = ByteNet.array(ByteNet.struct({
+					name = ByteNet.string,
+					haul = ByteNet.uint32,
+				})),
+			}),
 			reliabilityType = "reliable",
 		}),
 	}

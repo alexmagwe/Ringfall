@@ -1,7 +1,10 @@
 --!strict
--- Circular (theta) maze: concentric ring-bands around a central evac hub. The
--- player spawns at a gate in the outer wall and runs INWARD through gaps in each
--- ring wall to reach the glowing EvacPad at the centre (the win trigger).
+-- Circular (theta) maze: concentric ring-bands around a central Vault. Every
+-- round starts in a staging room OUTSIDE the perimeter; the door opens and
+-- players run INWARD through gaps in each ring wall to reach the Vault, then
+-- carry it back out through the same wall the same way they came (see
+-- docs/game/Escape.md for the round lifecycle and the win condition, which
+-- now lives at the staging room's ExtractPad, not here).
 -- Deterministic from Constants.SEED.
 --
 -- Cells are polar regions (band, sector). Band 0 is the central hub (1 cell).
@@ -33,8 +36,6 @@ local SECTORS = {
 	[7] = 24, [8] = 48, [9] = 48, [10] = 48, [11] = 48, [12] = 48,
 }
 local BANDS = 12 -- outermost band index
--- Always start in the outer rings — a run should be a long haul inward.
-local SPAWN_MIN_BAND = BANDS - 2 -- 10
 
 local WALL_H = 40
 local WALL_T = 3
@@ -46,6 +47,37 @@ local FLOOR_COLOR = Color3.fromRGB(48, 57, 62)
 local GATE_HEIGHT = WALL_H * 0.6 -- tall enough to read as a landmark, not full wall height
 local GATE_COLOR = Color3.fromRGB(255, 195, 60)
 
+-- Staging room + corridor: a walled box OUTSIDE the perimeter (radius
+-- RADII[13] + 40 = 574), opening inward through a single cut in the
+-- Perimeter wall. The extraction pad lives here (see docs/game/Maze.md and
+-- docs/game/Escape.md).
+local STAGING_CENTER_R = RADII[13] + 40 -- 574
+local STAGING_HALF_WIDTH = 25 -- tangential half-width of the whole room+corridor
+local STAGING_ROOM_HALF_DEPTH = 25 -- < 30: keeps the room clear of RADII[13] (534)
+local STAGING_ROOM_FAR_R = STAGING_CENTER_R + STAGING_ROOM_HALF_DEPTH -- 599
+local STAGING_ROOM_NEAR_R = STAGING_CENTER_R - STAGING_ROOM_HALF_DEPTH -- 549 (corridor ends here)
+local STAGING_COLOR = Color3.fromRGB(60, 66, 74)
+local DOOR_COLOR = Color3.fromRGB(200, 70, 60)
+local EXTRACT_PAD_COLOR = Color3.fromRGB(80, 220, 160)
+-- The round maze floor overhangs the perimeter wall by this much, so the world
+-- doesn't end flush against it. The staging floor must START at that overhang's
+-- outer edge, not at the perimeter — otherwise the two floors overlap for 30
+-- studs with both top faces at y=0, which z-fights into a shimmering band right
+-- where players walk out of the corridor.
+local FLOOR_OVERHANG = 30
+-- The staging floor is a BOX; the maze floor is a CYLINDER. Butting them at the
+-- same radius leaves a seam, because a straight edge can't follow a curve — the
+-- gap opens toward the sides and you can see down through it. So they OVERLAP
+-- inward by this much...
+local STAGING_FLOOR_OVERLAP = 8
+-- ...and the staging floor sits this far below the maze floor, because two
+-- overlapping surfaces at the SAME height z-fight into a shimmering band (the
+-- original bug). Overlap fixes the gap, the depth offset fixes the shimmer;
+-- 0.1 studs is far too small to feel as a step.
+local STAGING_FLOOR_DROP = 0.1
+local VAULT_COLOR = Color3.fromRGB(40, 40, 46)
+local VAULT_OUTLINE_COLOR = Color3.fromRGB(255, 195, 60)
+
 local TWO_PI = math.pi * 2
 
 local function sectorsOf(b: number): number
@@ -55,6 +87,14 @@ end
 -- Cartesian point at polar (r, theta), height y.
 local function polar(r: number, theta: number, y: number): Vector3
 	return Vector3.new(r * math.cos(theta), y, r * math.sin(theta))
+end
+
+-- Like `polar`, but offset perpendicular to the radial direction (tangentially)
+-- by `off` studs. Used for the staging room + corridor, which sit off-grid
+-- outside the maze's polar wall pattern rather than on a band/sector boundary.
+local function polarOffset(r: number, theta: number, off: number, y: number): Vector3
+	local tangent = Vector3.new(-math.sin(theta), 0, math.cos(theta))
+	return polar(r, theta, y) + tangent * off
 end
 
 -- Undirected passage set, keyed by an ordered cell-key pair.
@@ -141,12 +181,32 @@ end
 
 -- Opens the single passage across one district boundary and returns the
 -- (outerBand, sector) it was cut at, so the caller can place the gate model.
-local function openGate(rng: Random, passages: { [string]: boolean }, outerBand: number, innerBand: number): number
-	local s = rng:NextInteger(0, sectorsOf(outerBand) - 1)
+-- `awayFrom` (radians) biases the cut toward the FAR side of the ring. Picking
+-- each gate independently clusters them: you push through one and the next is a
+-- few steps away, which collapses a district into a corridor and wastes the
+-- whole sealed-ring idea. Chaining each gate roughly opposite the previous one
+-- forces a real traverse of every district.
+local function openGate(
+	rng: Random,
+	passages: { [string]: boolean },
+	outerBand: number,
+	innerBand: number,
+	awayFrom: number?
+): (number, number)
+	local sc = sectorsOf(outerBand)
+	local s
+	if awayFrom then
+		-- Opposite, plus a wide jitter so it isn't mechanically antipodal every
+		-- round (which would be its own predictable pattern).
+		local target = (awayFrom :: number) + math.pi + rng:NextNumber(-1, 1) * (math.pi / 4)
+		s = math.floor((target % TWO_PI) / (TWO_PI / sc)) % sc
+	else
+		s = rng:NextInteger(0, sc - 1)
+	end
 	local ratioIn = sectorsOf(outerBand) / sectorsOf(innerBand)
 	local innerS = math.floor(s / ratioIn)
 	passages[pairKey(outerBand, s, innerBand, innerS)] = true
-	return s
+	return s, (s + 0.5) * (TWO_PI / sc)
 end
 
 -- Knock out extra passages so the maze has loops (shortcuts), not one solution.
@@ -211,6 +271,109 @@ local function buildRadial(theta: number, r0: number, r1: number, parent: Instan
 	local p1 = polar(r1, theta, 0)
 	local mid = (p0 + p1) / 2
 	buildWallBox(mid, (p1 - p0).Unit, (r1 - r0) + WALL_T, parent, name)
+end
+
+-- A straight wall between two arbitrary XZ points, unlike buildRadial (which
+-- always runs through the origin). Used for the staging room + corridor.
+local function buildSegment(p0: Vector3, p1: Vector3, parent: Instance, name: string)
+	local mid = (p0 + p1) / 2
+	buildWallBox(mid, (p1 - p0).Unit, (p1 - p0).Magnitude + WALL_T, parent, name)
+end
+
+-- Builds (or rebuilds) the staging room + corridor at angle `theta`: a walled
+-- box centred at STAGING_CENTER_R with one side open toward the maze (no near
+-- wall — that opening is the corridor, which runs from the room's near edge
+-- to the cut in the Perimeter wall at the same angle). Owns workspace.Staging
+-- — its own folder, NOT under workspace.Maze, so `mazeFolder:ClearAllChildren()`
+-- can't destroy it, but rebuilt every rebuild just like Gates. Returns the
+-- CFrame SpawnLocation should use: near the room's far wall, facing back down
+-- the corridor (which is also world-centre, since a polar angle is a straight
+-- line through the origin) — the return trip is taught wordlessly before
+-- anyone leaves.
+local function buildStaging(theta: number): CFrame
+	local stagingFolder = workspace:FindFirstChild("Staging")
+	if stagingFolder then
+		stagingFolder:ClearAllChildren()
+	else
+		stagingFolder = Instance.new("Folder")
+		stagingFolder.Name = "Staging"
+		stagingFolder.Parent = workspace
+	end
+
+	-- Floor: one flat plate out to the room's far wall, tucked slightly UNDER
+	-- the maze floor's overhang rather than butted against it — see
+	-- STAGING_FLOOR_OVERLAP / STAGING_FLOOR_DROP for why it must be both
+	-- overlapping and lower.
+	local floorInnerR = RADII[BANDS + 1] + FLOOR_OVERHANG - STAGING_FLOOR_OVERLAP
+	local floorLen = STAGING_ROOM_FAR_R - floorInnerR
+	local floorMidR = floorInnerR + floorLen / 2
+	local floorDir = Vector3.new(math.cos(theta), 0, math.sin(theta))
+	newPart(
+		Vector3.new(floorLen, 2, STAGING_HALF_WIDTH * 2),
+		CFrame.fromMatrix(polar(floorMidR, theta, FLOOR_Y - 1 - STAGING_FLOOR_DROP), floorDir, Vector3.yAxis),
+		STAGING_COLOR,
+		stagingFolder,
+		"StagingFloor"
+	)
+
+	-- Side walls: run the full corridor+room length, flush with the perimeter
+	-- cut on the near end — there is deliberately no wall there, that's the
+	-- opening the corridor connects through.
+	local leftNear = polarOffset(RADII[BANDS + 1], theta, STAGING_HALF_WIDTH, 0)
+	local leftFar = polarOffset(STAGING_ROOM_FAR_R, theta, STAGING_HALF_WIDTH, 0)
+	buildSegment(leftNear, leftFar, stagingFolder, "StagingWall")
+
+	local rightNear = polarOffset(RADII[BANDS + 1], theta, -STAGING_HALF_WIDTH, 0)
+	local rightFar = polarOffset(STAGING_ROOM_FAR_R, theta, -STAGING_HALF_WIDTH, 0)
+	buildSegment(rightNear, rightFar, stagingFolder, "StagingWall")
+
+	-- Far wall caps the room.
+	buildSegment(leftFar, rightFar, stagingFolder, "StagingWall")
+
+	-- Door: blocks the corridor partway between the perimeter cut and the
+	-- room. EscapeService toggles CanCollide as RoundState changes.
+	-- Sits at WALL_H/2 to match buildWallBox, which forces every wall to span
+	-- y=0..WALL_H. Built at y=0 the door would be half-buried and leave a
+	-- 20-stud gap above it — still unwalkable, but it reads as broken geometry
+	-- rather than a door, and the slide-open would only clear half of it.
+	local doorR = (RADII[BANDS + 1] + STAGING_ROOM_NEAR_R) / 2
+	local doorLeft = polarOffset(doorR, theta, STAGING_HALF_WIDTH, WALL_H / 2)
+	local doorRight = polarOffset(doorR, theta, -STAGING_HALF_WIDTH, WALL_H / 2)
+	local door = newPart(
+		Vector3.new((doorRight - doorLeft).Magnitude, WALL_H, WALL_T),
+		CFrame.fromMatrix((doorLeft + doorRight) / 2, (doorRight - doorLeft).Unit, Vector3.yAxis),
+		DOOR_COLOR,
+		stagingFolder,
+		"Door"
+	)
+	door.CanCollide = true
+
+	-- Extraction pad: the round-end win trigger for whoever carries the vault
+	-- (EscapeService binds Touched; this is geometry only).
+	local pad = Instance.new("Part")
+	pad.Name = "ExtractPad"
+	pad.Shape = Enum.PartType.Cylinder
+	pad.Size = Vector3.new(1, STAGING_HALF_WIDTH * 1.2, STAGING_HALF_WIDTH * 1.2)
+	pad.CFrame = CFrame.new(polar(STAGING_CENTER_R, theta, FLOOR_Y + 0.6)) * CFrame.Angles(0, 0, math.rad(90))
+	pad.Anchored = true
+	pad.CanCollide = false
+	-- Flat floor marking, NOT a glowing disc. It was Neon with a PointLight back
+	-- when the room was unlit and the pad had to be a beacon; under daylight
+	-- that just reads as a blinding puddle in the middle of the lobby. Still
+	-- clearly a marked circle, and it is still the win trigger — do not delete
+	-- it, EscapeService binds Touched to it.
+	pad.Material = Enum.Material.SmoothPlastic
+	pad.Color = EXTRACT_PAD_COLOR
+	pad.Parent = stagingFolder
+
+	-- No overhead lamps here. They existed only because Atmosphere used to run at
+	-- ClockTime 0 with Ambient (18,22,28), which left this enclosed box pitch
+	-- black. Under the current daylight the room lights itself, and the lamps
+	-- were just glowing boxes floating over the entrance. If the game ever goes
+	-- back to night, they come back with it — see AtmosphereController's header.
+
+	local spawnPos = polar(STAGING_ROOM_FAR_R - 8, theta, 4)
+	return CFrame.lookAt(spawnPos, Vector3.new(0, spawnPos.Y, 0))
 end
 
 -- A lit archway marking the single opening in a district boundary: two
@@ -297,9 +460,16 @@ function MazeService.rebuild(seed: number)
 	for _, range in DISTRICT_BANDS do
 		carveRange(rng, passages, range[1], range[2])
 	end
+	-- Placed OUTERMOST first so each gate lands opposite the one the player just
+	-- came through, in the order they actually meet them. GATE_BOUNDARIES is
+	-- ordered inner -> outer, hence the reverse walk.
 	local gateSectors: { number } = {}
-	for i, g in GATE_BOUNDARIES do
-		gateSectors[i] = openGate(rng, passages, g[1], g[2])
+	local prevGateTheta: number? = nil
+	for i = #GATE_BOUNDARIES, 1, -1 do
+		local g = GATE_BOUNDARIES[i]
+		local s, theta = openGate(rng, passages, g[1], g[2], prevGateTheta)
+		gateSectors[i] = s
+		prevGateTheta = theta
 	end
 	addLoops(rng, passages)
 
@@ -322,7 +492,7 @@ function MazeService.rebuild(seed: number)
 	-- Floor: one thin cylinder disc, big enough to cover the spawn just outside
 	-- the perimeter. A Cylinder's axis is local X; rotate it 90° about Z so the
 	-- axis stands vertical and it reads as a flat round floor.
-	local floorRadius = RADII[BANDS + 1] + 30
+	local floorRadius = RADII[BANDS + 1] + FLOOR_OVERHANG
 	local floor = Instance.new("Part")
 	floor.Name = "Floor"
 	floor.Shape = Enum.PartType.Cylinder
@@ -357,12 +527,31 @@ function MazeService.rebuild(seed: number)
 		end
 	end
 
-	-- Perimeter: fully sealed outer wall (the maze is a closed circle).
+	-- Perimeter: sealed outer wall, except for one cut sector — the mouth of
+	-- the staging room (a fourth "gate", picked with the same seeded `rng` so
+	-- a seed fully determines the round). `stagingTheta` is used below to
+	-- build the room itself, after the wall it opens into already exists.
+	local stagingSector: number
+	local stagingTheta: number
 	do
 		local sc = sectorsOf(BANDS)
 		local step = TWO_PI / sc
+		stagingSector = rng:NextInteger(0, sc - 1)
+		stagingTheta = (stagingSector + 0.5) * step
+		-- Cut an opening exactly as wide as the corridor, NOT a whole sector.
+		-- A sector at this radius is ~70 studs of arc but the corridor is only
+		-- 50 wide, so skipping the whole sector left ~10 studs of open wall
+		-- either side of the corridor mouth — you could see (and walk) straight
+		-- out of the maze past the staging room.
+		local halfAngle = math.asin(STAGING_HALF_WIDTH / RADII[BANDS + 1])
 		for s = 0, sc - 1 do
-			buildArc(RADII[BANDS + 1], s * step, (s + 1) * step, mazeFolder, "Perimeter")
+			local a0, a1 = s * step, (s + 1) * step
+			if s ~= stagingSector then
+				buildArc(RADII[BANDS + 1], a0, a1, mazeFolder, "Perimeter")
+				continue
+			end
+			buildArc(RADII[BANDS + 1], a0, stagingTheta - halfAngle, mazeFolder, "Perimeter")
+			buildArc(RADII[BANDS + 1], stagingTheta + halfAngle, a1, mazeFolder, "Perimeter")
 		end
 	end
 
@@ -382,38 +571,73 @@ function MazeService.rebuild(seed: number)
 		buildGate(outerBand, gateSectors[i], MazeNav.districtOf(innerBand), gatesFolder)
 	end
 
-	-- Spawn: dropped in at a random interior cell in the outer rings (a real
-	-- journey inward remains), facing the centre. Uses the same seeded `rng` so
-	-- a seed fully determines the round.
-	local spawnBand = rng:NextInteger(SPAWN_MIN_BAND, BANDS) -- 10..12
-	local spawnSector = rng:NextInteger(0, sectorsOf(spawnBand) - 1)
-	local spawnMidR = (RADII[spawnBand] + RADII[spawnBand + 1]) / 2
-	local spawnAngle = (spawnSector + 0.5) * (TWO_PI / sectorsOf(spawnBand))
-	local spawnPos = polar(spawnMidR, spawnAngle, 4)
-	local spawnCFrame = CFrame.lookAt(spawnPos, Vector3.new(0, spawnPos.Y, 0))
+	-- Staging room + corridor: outside the perimeter, opening through the cut
+	-- made above. Also positions SpawnLocation (inside the room, facing back
+	-- down the corridor) — every run is now a full descent from outside.
+	local spawnCFrame = buildStaging(stagingTheta)
 	local spawnLocationInstance = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
 	assert(spawnLocationInstance, "MazeService: no SpawnLocation found in workspace")
 	local spawnLocation = spawnLocationInstance :: SpawnLocation
 	spawnLocation.CFrame = spawnCFrame
+	-- Hide the spawn pad itself: the staging room IS the waiting area, and a
+	-- floating Roblox spawn plate with its star decal reads as leftover
+	-- scaffolding sitting in the middle of it. It still functions — this only
+	-- makes it invisible and non-solid, so players stand on the room's floor.
+	spawnLocation.Transparency = 1
+	spawnLocation.CanCollide = false
+	for _, d in spawnLocation:GetChildren() do
+		if d:IsA("Decal") or d:IsA("Texture") then
+			d.Transparency = 1
+		end
+	end
 
-	-- EvacPad at the centre: the glowing win trigger. Named "ExitGate" so
-	-- EscapeService (which listens on Maze.ExitGate.Touched) works unchanged.
-	local evac = Instance.new("Part")
-	evac.Name = "ExitGate"
-	evac.Shape = Enum.PartType.Cylinder
-	evac.Size = Vector3.new(1, RADII[1] * 1.4, RADII[1] * 1.4)
+	-- Vault at the centre: the prize. Container-ish look (greybox) — it has no
+	-- behaviour yet, SalvageService gives it Touched behaviour and the alarm.
+	-- Named "Vault" (was "ExitGate" pre-extraction-loop); EscapeService no
+	-- longer looks it up at all — the win trigger moved to ExtractPad.
+	-- Pedestal: a low dais marking the chamber. Decor only — it is NOT named
+	-- "Vault", so SalvageService's Touched binding can't grab it by mistake.
+	local dais = Instance.new("Part")
+	dais.Name = "VaultDais"
+	dais.Shape = Enum.PartType.Cylinder
+	dais.Size = Vector3.new(2, RADII[1] * 1.4, RADII[1] * 1.4)
 	-- Lifted just above the floor so its underside doesn't z-fight the floor top.
-	evac.CFrame = CFrame.new(0, FLOOR_Y + 0.8, 0) * CFrame.Angles(0, 0, math.rad(90))
-	evac.Anchored = true
-	evac.CanCollide = false
-	evac.Material = Enum.Material.Neon
-	evac.Color = Color3.fromRGB(60, 220, 120)
-	evac.Parent = mazeFolder
-	local light = Instance.new("PointLight")
-	light.Color = evac.Color
-	light.Range = 40
-	light.Brightness = 2
-	light.Parent = evac
+	dais.CFrame = CFrame.new(0, FLOOR_Y + 0.9, 0) * CFrame.Angles(0, 0, math.rad(90))
+	dais.Anchored = true
+	dais.CanCollide = false
+	dais.Material = Enum.Material.Metal
+	dais.Color = VAULT_COLOR
+	dais.Parent = mazeFolder
+
+	-- The artifact itself: a glowing container floating at chest height above
+	-- the dais. It was previously a flat disc lying ON the floor, which read as
+	-- decoration rather than a prize — players walked to the centre and saw
+	-- nothing to take. It needs to be an OBJECT, lit, at eye level.
+	local vault = Instance.new("Part")
+	vault.Name = "Vault"
+	vault.Size = Vector3.new(7, 7, 7)
+	vault.CFrame = CFrame.new(0, FLOOR_Y + 6, 0) * CFrame.Angles(0, math.rad(35), math.rad(15))
+	vault.Anchored = true
+	vault.CanCollide = false
+	vault.CanTouch = true
+	vault.Material = Enum.Material.Neon
+	vault.Color = VAULT_OUTLINE_COLOR
+	vault.Parent = mazeFolder
+
+	local vaultLight = Instance.new("PointLight")
+	vaultLight.Color = VAULT_OUTLINE_COLOR
+	vaultLight.Range = 60
+	vaultLight.Brightness = 4
+	vaultLight.Shadows = true
+	vaultLight.Parent = vault
+
+	-- Visible through the ring walls, so the centre reads as the destination
+	-- from anywhere in the maze.
+	local vaultHighlight = Instance.new("Highlight")
+	vaultHighlight.FillTransparency = 1
+	vaultHighlight.OutlineColor = VAULT_OUTLINE_COLOR
+	vaultHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	vaultHighlight.Parent = vault
 
 	-- Validate: the whole maze is connected (so any drop-in cell reaches the hub).
 	local reached = reachFrom(passages, 0, 0)
@@ -452,13 +676,22 @@ function MazeService.rebuild(seed: number)
 	end
 	MazeNav.ready = true
 
-	print(`[Maze] circular seed={seed} bands={BANDS} cells={total} spawn=(b{spawnBand},s{spawnSector})`)
+	print(`[Maze] circular seed={seed} bands={BANDS} cells={total} stagingSector={stagingSector}`)
+
+	-- Vault/alarm reset so a fresh round re-arms cleanly. These attributes are
+	-- conceptually owned by Salvage/Hunter, but cleared here (like every other
+	-- per-run attribute EscapeService clears) since this is the one place a
+	-- new round always passes through. See docs/game/Maze.md.
+	workspace:SetAttribute("VaultTaken", nil)
+	workspace:SetAttribute("AlarmActive", nil)
+	workspace:SetAttribute("HunterAlert", nil)
+	workspace:SetAttribute("HunterAlertPos", nil)
 
 	workspace:SetAttribute("MazeSeed", seed)
 	-- Monotonic rebuild counter. Downstream features re-wire to the new Maze
-	-- geometry (ExitGate, EscapeZone, nav graph) whenever this changes; it must
-	-- be incremented last, after MazeNav is fully repopulated, so listeners that
-	-- react to it see a consistent graph.
+	-- geometry (Vault, Staging, EscapeZone, nav graph) whenever this changes;
+	-- it must be incremented last, after MazeNav is fully repopulated, so
+	-- listeners that react to it see a consistent graph.
 	workspace:SetAttribute("MazeGeneration", (workspace:GetAttribute("MazeGeneration") or 0) + 1)
 end
 

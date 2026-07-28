@@ -1,15 +1,18 @@
 # Maze
 
-The circular (theta) maze: concentric ring-bands around a central evac hub. The
-player spawns in the outer district and runs INWARD, searching each district's
-ring for the single gate through to the next, to reach the EvacPad at the
-centre (the win trigger, see [Escape.md](Escape.md)).
+The circular (theta) maze: concentric ring-bands around a central **Vault**.
+Every round starts in a **staging room** outside the perimeter; once the
+door opens, players run INWARD, searching each district's ring for the
+single gate through to the next, to reach the Vault — then carry it back out
+the same way they came. The win trigger is no longer here: it's the
+`ExtractPad` inside the staging room (see [Escape.md](Escape.md)).
 
 Files:
 
 - `src/features/Maze/MazeService.server.luau` — carves the maze (per-district,
-  see below), builds its geometry and the `Gates` landmarks, positions
-  `SpawnLocation`, and publishes the navigation graph (`MazeNav`).
+  see below), builds its geometry, the `Gates` landmarks, and the staging
+  room (`workspace.Staging`), positions `SpawnLocation`, and publishes the
+  navigation graph (`MazeNav`).
 - `src/features/Maze/MazeNav.luau` — shared nav graph (cell centres + open
   adjacency) other features (Hunter, Checkpoint) read, and `MazeNav.districtOf`
   — the single shared band-to-district mapping (see below).
@@ -28,7 +31,7 @@ district you were solving, not a few seconds of corridor (see
 | OUTER (3) | 10–12 | 144 | — (spawn here) |
 | MIDDLE (2) | 7–9 | 120 | `RADII[10]` = 408 |
 | INNER (1) | 1–6 | 102 | `RADII[7]` = 282 |
-| HUB (0) | 0 (the exit pad) | 1 | `RADII[1]` = 30 |
+| HUB (0) | 0 (the Vault) | 1 | `RADII[1]` = 30 |
 
 **The districts deliberately do NOT hold equal ring counts.** Circumference grows
 with radius, so equal rings give wildly unequal search areas: an even 4/4/4 split
@@ -49,10 +52,10 @@ are uneven). `MazeService` reads the ranges from there for carving, and derives
 crossing into the band below) so a layout change can't strand a gate mid-district.
 `CheckpointService` and the compass go through `districtOf`.
 
-**If you change `DISTRICT_BANDS`, also update the Compass `minBand`/`maxBand` in
-`Pickups/Constants.luau`** — it is pinned to the OUTER range so the compass is
-always reachable *before* the first gate, and nothing enforces that link
-automatically.
+The compass is standard equipment now, not a pickup with its own
+`minBand`/`maxBand` placement constraint (see [Salvage.md](Salvage.md)) — so
+changing `DISTRICT_BANDS` no longer requires updating a matching pickup
+constraint the way it once did.
 
 The three gate boundaries, each `{ outerBand, innerBand }`: `{10, 9}`, `{7, 6}`,
 `{1, 0}`. The first two are 1:1 on sector counts
@@ -120,36 +123,104 @@ Gates are consumed by:
 - **`CheckpointService`** — looks up the gate for a district by
   `EntersDistrict` and respawns a caught player at a floor-level CFrame there
   (see [Checkpoint.md](Checkpoint.md)).
-- **`CompassController`** (client) — targets the gate with the largest radius
-  still smaller than the player's own, needing no district maths client-side
-  (see [Pickups.md](Pickups.md)).
+- **`CompassController`** (client, now in `src/features/Salvage/`) — targets
+  the gate with the largest radius still smaller than the player's own,
+  needing no district maths client-side, until the vault is taken (see
+  [Salvage.md](Salvage.md)).
 
 ## Studio assets
 
 **None required beyond `workspace.SpawnLocation`.** The user must place one
 `SpawnLocation` instance in Workspace; `MazeService` repositions it every
-rebuild rather than recreating it. Everything else (floor, walls, `ExitGate`)
-is built procedurally.
+rebuild rather than recreating it. Everything else (floor, walls, the
+staging room, the Vault) is built procedurally.
+
+## The staging room + corridor
+
+Every round starts **outside the maze entirely**, in a walled room the
+player sees the extraction pad in *before* anyone leaves — teaching the
+return trip wordlessly. Built by `MazeService.rebuild` (a private
+`buildStaging` helper), rebuilt fresh every generation into its own
+`workspace.Staging` folder — **not** under `workspace.Maze`, since
+`mazeFolder:ClearAllChildren()` would destroy it, but cleared and rebuilt on
+every `MazeGeneration` just like `Gates`.
+
+Geometry, all keyed off one random angle (`stagingTheta`, drawn from the same
+seeded `rng` the carve/gates/loops use, so a seed still fully determines the
+round):
+
+1. **Perimeter cut.** A random outer-band sector (`stagingSector`, out of the
+   48 sectors in band 12) is picked *before* the Perimeter wall loop runs,
+   and that loop skips building the arc for exactly that sector — a
+   ~70-stud-wide gap in the otherwise-sealed perimeter, at
+   `stagingTheta`. **Order matters**: the sector must be chosen before the
+   Perimeter loop executes, or there's no wall to leave a gap in.
+2. **The room + corridor**, a single 50-stud-wide walled hallway on that
+   angle, split conceptually (not structurally — same width throughout) into
+   two zones:
+   - **Corridor** — from the perimeter cut (`RADII[13]` = 534) to the room's
+     near edge (549), 15 studs long. A `Door` part sits partway along it
+     (`CanCollide` toggled by `EscapeService` as `RoundState` changes — see
+     [Escape.md](Escape.md)).
+   - **Room** — centred at `RADII[13] + 40` = 574, half-depth 25 (kept
+     under 30 studs so it can't overlap the sealed maze). Holds the
+     `ExtractPad` (a lit Neon disc, the win trigger — see
+     [Escape.md](Escape.md)) and `SpawnLocation`, positioned near the room's
+     far wall facing back down the corridor. Since a polar angle is a
+     straight line through the origin, "facing down the corridor" and
+     "facing world-centre" are the same direction — no separate look-at
+     target needed.
+   - There is **no wall on the corridor's near end** — that opening is the
+     perimeter cut itself, so the corridor's mouth lines up flush with it.
+3. Floor, side walls, and the far wall are built via `polarOffset` (like
+   `polar`, but offset tangentially by a fixed number of studs — needed
+   because the staging room sits off the maze's own polar wall grid) and
+   `buildSegment` (a straight wall between two arbitrary points, unlike
+   `buildRadial` which always runs through the origin).
+
+**The old random-band spawn (`SPAWN_MIN_BAND`, bands 10–12) is gone.** Every
+round is now a full descent starting *outside* the perimeter — there's no
+more "sometimes you drop in a bit deeper" variance; the staging room is the
+only spawn point, every time.
+
+## The Vault
+
+The centre hub part, previously named `ExitGate` (the old per-player win
+trigger) and now named **`Vault`**: same size and position
+(`RADII[1] * 1.4` diameter, centred), but reskinned to read as a
+container — dark `Metal` material, a gold `Highlight` outline, no light
+emission (greybox; see [Salvage.md](Salvage.md) for its Touched behaviour and
+the alarm it trips). `MazeService` builds it with **no behaviour** —
+`SalvageService` binds `Touched` separately (see
+[Salvage.md](Salvage.md#the-vault-and-the-alarm)), the same split
+`MazeService`/`EscapeService` already used for the old `ExitGate`.
+`EscapeService` no longer looks the Vault up at all; the win trigger moved
+entirely to the staging room's `ExtractPad`.
 
 ## Round-per-seed, not fixed
 
 `MazeService.rebuild(seed: number)` builds (or rebuilds) the whole maze from a
-seed: carve, add loops, build geometry, place the spawn, publish `MazeNav`. It
-is safe to call repeatedly. `MazeService.Start()` is just
-`MazeService.rebuild(Constants.SEED)` followed by setting `workspace.MazeReady`.
+seed: carve, add loops, build geometry (including the staging room and
+Vault), place the spawn, publish `MazeNav`. It is safe to call repeatedly.
+`MazeService.Start()` is just `MazeService.rebuild(Constants.SEED)` followed
+by setting `workspace.MazeReady`.
 
-`EscapeService.Net.Restart.listen` (see [Escape.md](Escape.md)) calls
-`MazeService.rebuild` with a fresh random seed on every "RUN IT BACK" — so the
-wall layout genuinely changes each round, not just the spawn point.
+`EscapeService.endRound` (see [Escape.md](Escape.md)) calls
+`MazeService.rebuild` with a fresh random seed every time the vault reaches
+the extract pad — so the wall layout, staging room angle, and Vault all
+genuinely change each round, not just the spawn point.
 
 ## The rebuild footgun — `workspace.MazeGeneration`
 
 `rebuild` calls `mazeFolder:ClearAllChildren()` to clear the previous maze. That
-**destroys `ExitGate`** and anything another feature parented into the `Maze`
-folder (e.g. EscapeService's `EscapeZone`). Any service holding a captured
-reference to those instances from a previous build now holds a reference to a
-destroyed instance, and a `.Touched` connection wired to the old instance will
-never fire again — **silently**, with no error.
+**destroys the `Vault`** and anything another feature parented into the `Maze`
+folder (e.g. EscapeService's `EscapeZone`). The `Staging` folder (Door,
+ExtractPad) is separate from `Maze` but is rebuilt — cleared and repopulated
+— on every generation too, for the same reason: the staging room's angle
+changes every round. Any service holding a captured reference to instances
+from a previous build now holds a reference to a destroyed instance, and a
+`.Touched` connection wired to the old instance will never fire again —
+**silently**, with no error.
 
 The fix: `rebuild` increments a monotonic `workspace.MazeGeneration` attribute
 (a plain number) as the very last thing it does, after `MazeNav.ready = true`.
@@ -169,35 +240,20 @@ Services currently re-wiring on `MazeGeneration`:
 
 | Service | What it re-does |
 | ------- | ---------------- |
-| `EscapeService` | Recreates `EscapeZone`, re-fetches `ExitGate`, reconnects `Touched` |
-| `HunterService` | Re-snapshots `MazeNav.cellPos` / `maxBand`, re-homes every live hunter |
+| `EscapeService` | Recreates `EscapeZone`, re-fetches `Door`/`ExtractPad` from `Staging`, reconnects `ExtractPad.Touched` |
+| `SalvageService` | Re-scatters salvage, re-fetches the `Vault`, reconnects its `Touched` |
+| `HunterService` | Re-snapshots `MazeNav.cellPos` / `maxBand`, re-homes every live hunter, clears `HunterAlert`/`HunterAlertPos` |
 | `CheckpointService` | Clears each player's `deepest`-district baseline |
+
+`MazeService.rebuild` itself also clears `VaultTaken` / `AlarmActive` /
+`HunterAlert` / `HunterAlertPos` directly (not via a listener) as part of
+`rebuild` — conceptually Salvage/Hunter attributes, but cleared in the one
+place every round always passes through, same reasoning as every other
+per-run attribute reset. See [Salvage.md](Salvage.md).
 
 `spawnLocation` itself does **not** need re-fetching anywhere — `MazeService`
 repositions the same instance every rebuild rather than recreating it, so a
 CFrame read off a captured reference stays live and correct.
-
-## Far spawn rule
-
-The spawn always lands in the outer 3 rings (`SPAWN_MIN_BAND = BANDS - 2`
-through `BANDS`, i.e. bands 10–12 of 12), never mid-maze — a run is meant to be
-a long haul inward. Spawns land at each band's **mid-radius**, so there are
-exactly three possible distances from the centre:
-
-| Band | Mid-radius | From `RADII` |
-| ---- | ---------- | ------------ |
-| 10 | **429** | (408 + 450) / 2 |
-| 11 | **471** | (450 + 492) / 2 |
-| 12 | **513** | (492 + 534) / 2 |
-
-So the drop-in point is always **at least 429 studs** out, against an outer
-perimeter of `RADII[13] = 534`. Use 429 as the assertion floor, not a rounder
-number — band 10 sits just under 430 and a `> 430` check fails roughly a third
-of the time.
-
-Spawn placement uses the **same seeded `rng`** as the carve/loop steps (not a
-separate unseeded `Random`), so a seed alone fully determines the whole round —
-walls and spawn together.
 
 ## Band geometry (fixed)
 

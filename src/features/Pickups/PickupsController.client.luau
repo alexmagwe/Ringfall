@@ -73,7 +73,6 @@ function PickupsController.Start()
 	local LABELS = {
 		Gun = "GUN",
 		Ammo = "AMMO",
-		Compass = "COMPASS",
 		Flashlight = "FLASHLIGHT",
 		Stamina = "STAMINA UPGRADE",
 		HealthKit = "MEDKIT",

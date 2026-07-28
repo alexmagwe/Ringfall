@@ -6,6 +6,33 @@ gate as the player's respawn point. Getting caught throws you back to
 re-solve the whole district you were in, not back a few seconds of corridor —
 ordinary band boundaries *within* a district do nothing.
 
+## Respawn points for a recovery run, not progress saves
+
+Before the extraction-loop rework (see [Escape.md](Escape.md)), reaching a
+checkpoint *was* progress: the round's only goal was reaching the centre, so
+a checkpoint banked how far you'd gotten toward the one thing that mattered.
+
+That's no longer true. The centre now holds the **Vault**, not the finish
+line — taking it starts the real objective (carrying it back out, hunted),
+and the finish line is the staging room's `ExtractPad`. A checkpoint doesn't
+save your progress toward that anymore, because "progress" isn't a position
+in the maze at all — it's whatever you're **carrying** (`Haul`, `HasVault`),
+and death spills that at the death site rather than banking it (see
+[Salvage.md](Salvage.md#drop-steal-recover)). Position was the thing at
+risk before; cargo is the thing at risk now, and a checkpoint can't protect
+cargo.
+
+So a checkpoint is now purely **where you get to re-attempt a recovery
+from** — the nearest gate behind you, so a caught player re-solves the
+district they were in rather than the whole maze from the staging room, but
+a run that ends in a catch is a run that *lost its haul*, checkpoint or not.
+This is the point of the rework, not a regression: it's what makes "how far
+do I push?" a real question again, instead of a checkpoint quietly handing
+your position back for free. `CheckpointService` itself needed **no code
+changes** for this — the reframe is entirely in what death now costs
+elsewhere (Hunter's drop-on-catch, Salvage's nothing-carries-forward rule),
+not in how or where respawn points are set.
+
 File: `src/features/Checkpoint/CheckpointService.server.luau`. Auto-loaded
 (name ends in `Service`), `Priority = 20` (after Hunter's 15).
 

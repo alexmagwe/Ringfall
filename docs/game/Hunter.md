@@ -95,9 +95,31 @@ is within `CATCH_DIST` (7 studs) — line-of-sight ignored, so a blind corner st
 counts — the hunter bleeds their `Health` attribute by `HEALTH_DRAIN` (25 HP/s).
 A hunter has to *stay* on you; break contact and the bleed stops. Only when
 `Health` reaches **0** does the catch proper fire: freeze the player, turn the
-hunter to face them, swell the drone, then after 1.4s drop them at their
-`Checkpoint`, **refill Health to full**, and warp the hunter away. Multiple
-hunters stack their drain, so being swarmed kills fast. See [Health.md](Health.md).
+hunter to face them, swell the drone, then after 1.4s — after spilling any
+`Haul`/`HasVault` the player was carrying (see below) — drop them at their
+`Checkpoint` and **refill Health to full**. **The hunter itself no longer
+warps away** — it lingers at the kill site, guarding the drops it just made
+(see [Salvage.md](Salvage.md#drop-steal-recover)). This is safe because the
+caught player respawns at their last *gate* checkpoint with `SafeUntil`
+grace, not at the death site itself (see [Checkpoint.md](Checkpoint.md)).
+Multiple hunters stack their drain, so being swarmed kills fast. See
+[Health.md](Health.md).
+
+### Spilling Haul and the Vault on catch
+
+Immediately before the checkpoint teleport, `catchPlayer` captures the
+player's death position (`phrp.Position` — still accurate, since `phrp` has
+been anchored in place since the initial catch) and:
+
+- If `Haul > 0`: `SalvageService.dropHaul(deathPos, haul)`, then zeroes
+  `Haul`.
+- If `HasVault`: `SalvageService.dropVault(deathPos)`, then clears
+  `HasVault`.
+
+`HunterService` requires `SalvageService` directly
+(`ServerScriptService.Features.Salvage.SalvageService`) for this — the same
+cross-feature server require `EscapeService` already uses for `MazeService`.
+See [Salvage.md](Salvage.md) for what those two dropped objects do.
 
 Players with `Escaped`, `Caught`, or an unexpired `SafeUntil` attribute are
 ignored by both sensing and draining/catching.
@@ -169,23 +191,44 @@ position, mirroring the `EvacAlert` pattern above but distinct from it:
   `SUMMON_WINDOW` (5s) after `HunterAlert`, sprints (`MAX_SPEED`) toward the
   nearest cell to that position instead of chasing/searching/wandering
   normally.
-- Both attributes are cleared (`nil`) on every `MazeGeneration` rebuild, in the
-  same listener that re-homes hunters — a stale alert can never carry into a
-  new round.
+- **The vault alarm reuses this exact branch and shares its two attributes.**
+  `SalvageService` sets `workspace.AlarmActive = true` the instant the vault
+  is taken, and refreshes `HunterAlert` / `HunterAlertPos` every second at
+  wherever the vault currently is (see
+  [Salvage.md](Salvage.md#the-vault-and-the-alarm)) — no new hunter pathing
+  was written for this. The one difference: `AlarmActive` **bypasses the
+  `SUMMON_RADIUS` check entirely** —
+
+  ```lua
+  and (alarmActive or (root.Position - (sPos :: Vector3)).Magnitude < SUMMON_RADIUS)
+  ```
+
+  — a gunshot summon is local (only nearby hunters respond), but the vault
+  alarm is a maze-wide siren (every hunter responds, regardless of distance).
+  `SUMMON_RADIUS` itself is untouched; only the alarm skips it.
+- Both attributes (plus `AlarmActive` and `VaultTaken`) are cleared (`nil`) by
+  `MazeService.rebuild` directly on every generation — a stale alert or a
+  stale "vault is out" state can never carry into a new round. See
+  [Maze.md](Maze.md#the-rebuild-footgun--workspacemazegeneration).
 - `SIREN_SOUND_ID = ""` is a seam here (unused until Gun's own copy plays a
   siren on the hit hunter — see [Gun.md](Gun.md)); silent until the user
   supplies an asset.
 
-## Evac alert — converging on the pad
+## Evac alert — converging on the pad (currently dead)
 
-`workspace.EvacAlert` (a `os.clock()` timestamp) is set by `EscapeService` the
-moment any player touches the exit gate. For `EVAC_ALERT_SECONDS` (4s)
-afterward, **every** hunter overrides its normal chase/search/wander decision
-and sprints (`MAX_SPEED`) straight for the cell nearest world-centre — the
-branch is checked first, before the CHASE state, each `REPATH` tick. This gives
-the escape cinematic (see [Escape.md](Escape.md)) hunters visibly converging on
-the pad, arriving just too late. It's independent of whether they were sensing
-anyone.
+`workspace.EvacAlert` (a `os.clock()` timestamp) was set by `EscapeService`
+the moment any player touched the old `ExitGate`. For `EVAC_ALERT_SECONDS`
+(4s) afterward, **every** hunter would override its normal
+chase/search/wander decision and sprint (`MAX_SPEED`) straight for the cell
+nearest world-centre — the branch is checked first, before the CHASE state,
+each `REPATH` tick.
+
+**Nothing sets `EvacAlert` anymore.** The extraction-loop rework
+(see [Escape.md](Escape.md)) removed the per-player win entirely — the win
+trigger moved to the staging room's `ExtractPad`, and nothing there sets this
+attribute. This branch is left in place (not removed) since the plan's
+phases 1–5 don't specify a replacement trigger for it; it's dead code, not a
+bug, and safe to leave — see [Escape.md](Escape.md#whats-now-dead-and-why-its-safe-to-leave-that-way).
 
 ## Rebuild refresh
 
@@ -206,8 +249,13 @@ reset on rebuild — re-homing the model is enough, since `stepToward` reads
 
 Reads `ReplicatedStorage.Features.Maze.MazeNav` for the navigation graph and
 `workspace.MazeReady` / `workspace.MazeGeneration` / `workspace.EvacAlert` /
-`workspace.HunterAlert` / `workspace.HunterAlertPos` / `workspace.SpawnLocation`,
-and the `Checkpoint` / `Escaped` / `SafeUntil` player attributes.
-`workspace.HunterAlert` / `HunterAlertPos` are written by `Gun/GunService.server.luau`
-(see [Gun.md](Gun.md)) — Hunter only consumes them. `Priority = 15`, so it
-starts after `MazeService` (5).
+`workspace.HunterAlert` / `workspace.HunterAlertPos` / `workspace.AlarmActive` /
+`workspace.SpawnLocation`, and the `Checkpoint` / `Escaped` / `SafeUntil` /
+`Haul` / `HasVault` player attributes. `workspace.HunterAlert` /
+`HunterAlertPos` are written by both `Gun/GunService.server.luau` (see
+[Gun.md](Gun.md)) and `Salvage/SalvageService.server.luau` (see
+[Salvage.md](Salvage.md)) — Hunter only consumes them, and doesn't care which
+producer set them. `HunterService` requires `SalvageService` directly
+(`ServerScriptService.Features.Salvage.SalvageService`) for the drop-on-catch
+path (`dropHaul`/`dropVault`). `Priority = 15`, so it starts after
+`MazeService` (5).

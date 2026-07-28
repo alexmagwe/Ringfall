@@ -1,7 +1,9 @@
 --!strict
--- Scavenged pickups: gun, ammo, compass, stamina upgrade. Scattered at random
--- maze cells every round; touching one grants a per-run PLAYER ATTRIBUTE (never
--- PlayerData — this is ephemeral, cleared by EscapeService on RUN IT BACK).
+-- Scavenged pickups: gun, ammo, flashlight, stamina upgrade, MedKits.
+-- Scattered at random maze cells every round; touching one grants a per-run
+-- PLAYER ATTRIBUTE (never PlayerData — this is ephemeral, cleared by
+-- EscapeService at round end). The compass is standard equipment now, not a
+-- pickup — see docs/game/Salvage.md.
 --
 -- Auto-loaded (name ends in `Service`). Priority after MazeService (5), so
 -- MazeNav is populated by the time this scatters.
@@ -31,8 +33,6 @@ local function grant(player: Player, kind: string, amount: number?)
 		player:SetAttribute("Ammo", (player:GetAttribute("Ammo") or 0) + Constants.GUN_START_AMMO)
 	elseif kind == "Ammo" then
 		player:SetAttribute("Ammo", (player:GetAttribute("Ammo") or 0) + (amount or 0))
-	elseif kind == "Compass" then
-		player:SetAttribute("HasCompass", true)
 	elseif kind == "Flashlight" then
 		player:SetAttribute("HasFlashlight", true)
 	elseif kind == "Stamina" then

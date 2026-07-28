@@ -103,7 +103,10 @@ return {
 		[2] = { count = 8, value = 30, color = Color3.fromRGB(120, 190, 220) },
 		[1] = { count = 6, value = 75, color = Color3.fromRGB(200, 150, 255) },
 	},
-	VAULT_VALUE = 500, -- more than a perfect sweep of everything above it (340+450)
+	-- A perfect sweep is 100+240+450 = 790, but that means visiting all 24 cells
+	-- and the round ends when anyone extracts the vault, so nobody finishes one.
+	-- 500 beats any realistic sweep while staying under the impossible maximum.
+	VAULT_VALUE = 500,
 	ALARM_REFRESH = 1.0,
 }
 ```

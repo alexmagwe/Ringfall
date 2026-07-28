@@ -22,11 +22,12 @@ one-way dependency rule that keeps the framework updatable.
 
 | Doc | Feature |
 | --- | ------- |
-| [Maze.md](Maze.md) | The circular maze — per-round seed, the `MazeGeneration` rebuild contract, the far-spawn rule |
-| [Escape.md](Escape.md) | Round state machine, packets, personal best, the escape cinematic |
-| [Hunter.md](Hunter.md) | Maze stalkers — sensing, chase/search/wander, the catch, the duck avatar, combat (health/death/explosion/respawn), the summon, and the evac-alert convergence |
-| [Checkpoint.md](Checkpoint.md) | Sealed-district gate checkpoints — district (not band) tracking, respawn-at-gate, the floor-level stand CFrame |
-| [Pickups.md](Pickups.md) | Per-run scavenge — gun, ammo, compass, flashlight, stamina upgrade; scatter/grant/clear lifecycle + the model-clone convention |
+| [Maze.md](Maze.md) | The circular maze — per-round seed, the `MazeGeneration` rebuild contract, the staging room + corridor, the Vault |
+| [Escape.md](Escape.md) | The round loop — staging countdown, the Door, extraction-by-vault-carrier, banking, and what the old per-player win left behind |
+| [Hunter.md](Hunter.md) | Maze stalkers — sensing, chase/search/wander, the catch (now spilling Haul/Vault), combat (health/death/explosion/respawn), the gunshot summon and the vault alarm, and the (now-dead) evac-alert convergence |
+| [Checkpoint.md](Checkpoint.md) | Sealed-district gate checkpoints — district (not band) tracking, respawn-at-gate, the floor-level stand CFrame, and why a checkpoint is a recovery point rather than a progress save post-extraction-loop |
+| [Salvage.md](Salvage.md) | The extraction loop's prize layer — depth-scaled scatter, the Vault + alarm, drop/steal/recover, nothing-carries-between-rounds, and the compass as standard equipment |
+| [Pickups.md](Pickups.md) | Per-run scavenge — gun, ammo, flashlight, stamina upgrade; scatter/grant/clear lifecycle + the model-clone convention |
 | [Flashlight.md](Flashlight.md) | Camera-cone light, gated on the `HasFlashlight` scavenge attribute |
 | [Health.md](Health.md) | Player HP — hunter-contact drain, MedKit heal, the top health bar, death-at-0 |
 | [Gun.md](Gun.md) | Client-request/server-authority gun — ammo economy, the `Humanoid.TakeDamage` seam, the summon trigger |

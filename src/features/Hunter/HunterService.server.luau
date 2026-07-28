@@ -12,8 +12,12 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
+-- Cross-feature server require for the drop-on-catch path (dropHaul/
+-- dropVault), the same pattern EscapeService already uses for MazeService.
+local SalvageService = require(ServerScriptService.Features.Salvage.SalvageService)
 
 local HunterService = {}
 HunterService.Priority = 15
@@ -249,8 +253,28 @@ local function canSee(fromPos: Vector3, toPos: Vector3): boolean
 	return not (n == "Arc" or n == "Spoke" or n == "Perimeter")
 end
 
+-- The vault chamber at the centre is a sanctuary: hunters neither sense nor
+-- harm you inside it. The run's whole shape is a long committed descent, and
+-- arriving at the bottom with 20 HP and three hunters on you is a coin-flip
+-- ending rather than a climax. This gives a breather at the turnaround — you
+-- still have to carry the thing all the way back out, with every hunter alerted.
+local SANCTUARY_RADIUS = 40 -- band 0 (the hub) ends at 30; a little margin past it
+
+local function inSanctuary(plr: Player): boolean
+	local char = plr.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then
+		return false
+	end
+	local p = (hrp :: BasePart).Position
+	return Vector2.new(p.X, p.Z).Magnitude < SANCTUARY_RADIUS
+end
+
 local function outOfRound(plr: Player): boolean
 	if plr:GetAttribute("Escaped") or plr:GetAttribute("Caught") then
+		return true
+	end
+	if inSanctuary(plr) then
 		return true
 	end
 	local safeUntil = plr:GetAttribute("SafeUntil")
@@ -324,8 +348,10 @@ function HunterService.Start()
 		return bestP, bestC, bestDist
 	end
 
-	-- The catch sequence (shared by all hunters): freeze the player, loom, red-out,
-	-- then ~1.4s later drop them at their last checkpoint and warp this hunter away.
+	-- The catch sequence (shared by all hunters): freeze the player, loom,
+	-- red-out, then ~1.4s later spill their haul/vault (if any) and drop them
+	-- at their last checkpoint. The hunter itself stays put — it no longer
+	-- warps away, so it lingers guarding the kill.
 	local function catchPlayer(player: Player, char: Model, hunter: Model, root: BasePart, growl: Sound?)
 		if player:GetAttribute("Caught") then
 			return
@@ -341,6 +367,25 @@ function HunterService.Start()
 			growl.Volume = 1.6
 		end
 		task.delay(1.4, function()
+			-- Death position, captured before the checkpoint teleport moves the
+			-- player away. `phrp` has been anchored (frozen) since the initial
+			-- catch, so its Position still reads the exact death spot.
+			local deathPos = if phrp then phrp.Position else root.Position
+
+			-- Spill the haul as a recoverable pile — and the vault as its own
+			-- separate object, if the player was carrying it — before the
+			-- checkpoint teleport. Both can land in the same spot; they mean
+			-- different things (see docs/game/Salvage.md).
+			local haul = player:GetAttribute("Haul")
+			if typeof(haul) == "number" and haul > 0 then
+				SalvageService.dropHaul(deathPos, haul)
+				player:SetAttribute("Haul", 0)
+			end
+			if player:GetAttribute("HasVault") then
+				SalvageService.dropVault(deathPos)
+				player:SetAttribute("HasVault", false)
+			end
+
 			local cp = player:GetAttribute("Checkpoint")
 			local dest = if typeof(cp) == "CFrame"
 				then (cp :: CFrame) + Vector3.new(0, 3, 0)
@@ -353,7 +398,10 @@ function HunterService.Start()
 				growl.Volume = 0.8
 			end
 			root.Anchored = false
-			hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
+			-- The hunter no longer warps away — it lingers guarding the kill
+			-- (and the drops it just made). Safe: the player respawns at their
+			-- last gate with SafeUntil grace, not at the death site itself (see
+			-- docs/game/Checkpoint.md).
 			-- Fresh life at the checkpoint = a full bar again (not regen — you only
 			-- refill by dying back to a checkpoint or grabbing a MedKit).
 			player:SetAttribute("Health", player:GetAttribute("MaxHealth") or 100)
@@ -438,17 +486,22 @@ function HunterService.Start()
 						continue
 					end
 
-					-- Summon: a hunter just got shot. Nearby hunters (within
-					-- SUMMON_RADIUS) beeline to the shooter's position for
-					-- SUMMON_WINDOW seconds. GunService sets these attributes on a
-					-- hit (Phase 3); this is the consumer.
+					-- Summon: a hunter just got shot, OR the vault alarm is
+					-- ringing (SalvageService sets AlarmActive and refreshes
+					-- these same attributes at the vault's position). Nearby
+					-- hunters (within SUMMON_RADIUS) beeline to the position for
+					-- SUMMON_WINDOW seconds — except the vault alarm is a
+					-- maze-wide siren, not a local gunshot, so it bypasses the
+					-- radius check entirely. Leave SUMMON_RADIUS itself alone;
+					-- only the alarm skips it.
 					local sAlert = workspace:GetAttribute("HunterAlert")
 					local sPos = workspace:GetAttribute("HunterAlertPos")
+					local alarmActive = workspace:GetAttribute("AlarmActive") == true
 					if
 						typeof(sAlert) == "number"
 						and os.clock() - sAlert < SUMMON_WINDOW
 						and typeof(sPos) == "Vector3"
-						and (root.Position - (sPos :: Vector3)).Magnitude < SUMMON_RADIUS
+						and (alarmActive or (root.Position - (sPos :: Vector3)).Magnitude < SUMMON_RADIUS)
 					then
 						hum.WalkSpeed = MAX_SPEED
 						stepToward(MazeNav.nearestCell(sPos :: Vector3))

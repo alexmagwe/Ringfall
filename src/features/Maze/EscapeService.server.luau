@@ -1,30 +1,44 @@
 --!strict
--- Escape round state machine: tracks each player's run timer, fires the
--- start/escape network events, and freezes/resets characters at the exit.
+-- Round state machine: staging countdown -> door opens -> descend -> vault ->
+-- extract -> maze rebuild -> staging, repeating with no manual button press.
+-- Free-for-all: there is no per-player win anymore. Extraction only ends the
+-- round for whoever is carrying the vault (`HasVault`); everyone banks their
+-- Haul when that happens. See docs/game/Escape.md.
 --
 -- Depends on MazeService having already positioned SpawnLocation and built
--- ExitGate. Loader.SpawnAll's Priority field only orders the *call* order of
--- each module's Start(), not completion order (task.spawn hands control back
--- to the scheduling loop at the first yield) — so instead of assuming
--- MazeService finished first, this waits on the workspace.MazeReady
--- attribute MazeService sets at the very end of its Start().
+-- the Staging room (Door, ExtractPad) + the Vault. Loader.SpawnAll's Priority
+-- field only orders the *call* order of each module's Start(), not
+-- completion order (task.spawn hands control back to the scheduling loop at
+-- the first yield) — so instead of assuming MazeService finished first, this
+-- waits on the workspace.MazeReady attribute MazeService sets at the very
+-- end of its Start().
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Net = require(ReplicatedStorage.Features.Maze.Net)
 local MazeService = require(ServerScriptService.Features.Maze.MazeService)
-local PlayerDataService = require(ServerScriptService.Features.PlayerData.PlayerDataService)
 
 local EscapeService = {}
 
--- After MazeService (5); the maze must exist before round state can track
--- players moving through it.
+-- After MazeService (5); the maze must exist before round state can track it.
 EscapeService.Priority = 10
 
 local ZONE_RADIUS = 25
+local ROUND_COUNTDOWN = 15 -- seconds in Staging before the door opens
+-- The door SLIDES INTO THE FLOOR to open. Toggling CanCollide alone is not
+-- enough: the part stays fully opaque and in place, so the door never appears to
+-- open and players just phase through what still looks like a solid wall.
+local DOOR_SLIDE_TIME = 1.4
+-- Extra drop past the door's own height. Sliding down by exactly Size.Y leaves
+-- the door's top face at y=0 — coplanar with the staging floor's top face — and
+-- two coplanar surfaces z-fight, which reads in game as a shimmering coloured
+-- line across the floor where the door went down. The staging floor is 2 studs
+-- thick (spans y=-2..0), so 4 clears it entirely.
+local DOOR_SLIDE_CLEARANCE = 4
 
 type PlayerState = {
 	startedAt: number?,
@@ -43,9 +57,10 @@ local function getState(player: Player): PlayerState
 	return fresh
 end
 
--- Called on first spawn and every respawn/death: a new life starts the round
--- fresh (not yet left the zone, not escaped). The `Escaped` attribute is the
--- shared signal other features read (HunterService ignores escaped players).
+-- Called on first spawn and every respawn/death: a new life starts fresh.
+-- `Escaped` is a legacy per-player signal (Hunter/Checkpoint still read it
+-- defensively) — nothing sets it true anymore, since extraction is now
+-- server-wide rather than a personal win.
 local function resetState(player: Player)
 	state[player] = { startedAt = nil, escaped = false }
 	player:SetAttribute("Escaped", false)
@@ -73,63 +88,157 @@ function EscapeService.Start()
 
 	-- spawnLocation stays captured: MazeService repositions the *same* instance
 	-- rather than recreating it on rebuild, so its CFrame reads live and stays
-	-- correct. Only the folder, gate and zone are destroyed by ClearAllChildren
-	-- and need re-fetching.
+	-- correct. The Staging folder's contents (Door, ExtractPad) and the Maze
+	-- folder's EscapeZone are destroyed by ClearAllChildren and need re-fetching.
 	local spawnLocation = workspace:WaitForChild("SpawnLocation") :: SpawnLocation
 
-	local gateConnection: RBXScriptConnection? = nil
 	local zonePart: BasePart? = nil
+	local doorPart: BasePart? = nil
+	-- Captured in bindToMaze: the door is rebuilt every round, so its shut
+	-- position has to be re-read rather than remembered across rebuilds.
+	local doorShutCFrame: CFrame? = nil
 
-	-- Escape: debounced per player via playerState.escaped, checked and set
-	-- synchronously before any yield so re-entrant Touched firings (multiple
-	-- character parts overlapping the gate in the same frame) can't double-fire.
-	local function onGateTouched(hit: BasePart)
-		local player = playerFromPart(hit)
-		if not player then
+	-- Drops into the floor (local -Y is world down: the door is built with
+	-- CFrame.fromMatrix(..., Vector3.yAxis), so its local Y is world up).
+	local function setDoorOpen(open: boolean)
+		local door, shut = doorPart, doorShutCFrame
+		if not door or not shut then
 			return
 		end
+		if not open then
+			door.CFrame = shut
+			door.CanCollide = true
+			return
+		end
+		door.CanCollide = false
+		TweenService
+			:Create(
+				door,
+				TweenInfo.new(DOOR_SLIDE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ CFrame = shut * CFrame.new(0, -(door.Size.Y + DOOR_SLIDE_CLEARANCE), 0) }
+			)
+			:Play()
+	end
+	local extractConnection: RBXScriptConnection? = nil
+	local extracting = false -- debounce: closes the instant a valid extraction lands
+
+	local function resetRunAttributes(player: Player)
+		player:SetAttribute("Checkpoint", nil)
+		player:SetAttribute("CheckpointRing", nil)
+		player:SetAttribute("SafeUntil", nil)
+		player:SetAttribute("HasGun", nil)
+		player:SetAttribute("Ammo", nil)
+		player:SetAttribute("HasFlashlight", nil)
+		player:SetAttribute("StaminaBonus", nil)
+		player:SetAttribute("Haul", nil)
+		player:SetAttribute("HasVault", nil)
+		-- Fresh round = full bar (a teleport doesn't fire HealthService's
+		-- CharacterAdded refill).
+		player:SetAttribute("Health", player:GetAttribute("MaxHealth") or 100)
+	end
+
+	local function teleportToStaging(player: Player)
 		local character = player.Character
 		if not character then
 			return
 		end
-		local playerState = getState(player)
-		if playerState.escaped then
+		setCharacterAnchored(character, false)
+		character:PivotTo(spawnLocation.CFrame + Vector3.new(0, 3, 0))
+	end
+
+	-- Staging: door blocked, a 15s countdown broadcasts every second. Active:
+	-- door opens, no timer (see the plan's "no global run countdown" rule —
+	-- the vault alarm is the only timer, and only a player taking the vault
+	-- starts it). Defined before endRound (which calls it to loop back) so
+	-- there's no forward reference to a not-yet-assigned local.
+	-- Forward-declared: endRound calls it (to re-bind to the freshly rebuilt
+	-- geometry) but it is defined further down, next to the other maze-binding
+	-- code. Without this the call inside endRound would resolve as a nil global.
+	local bindToMaze: () -> ()
+
+	local function runStaging()
+		workspace:SetAttribute("RoundState", "Staging")
+		setDoorOpen(false)
+		task.spawn(function()
+			for remaining = ROUND_COUNTDOWN, 0, -1 do
+				Net.RoundState.sendToAll({ state = "Staging", secondsRemaining = remaining })
+				task.wait(1)
+			end
+			workspace:SetAttribute("RoundState", "Active")
+			setDoorOpen(true)
+			Net.RoundState.sendToAll({ state = "Active", secondsRemaining = 0 })
+		end)
+	end
+
+	local function endRound(winner: Player)
+		workspace:SetAttribute("RoundState", "Staging")
+
+		-- Bank every player's haul (Phase 6 will convert this to persisted
+		-- cash; until then this packet is the report).
+		local hauls = {}
+		for _, plr in Players:GetPlayers() do
+			local haul = plr:GetAttribute("Haul")
+			table.insert(hauls, { name = plr.Name, haul = if typeof(haul) == "number" then haul else 0 })
+		end
+		Net.RoundEnded.sendToAll({ winnerName = winner.Name, hauls = hauls })
+
+		-- Nothing carries between rounds: unrecovered drops die with the round
+		-- (workspace.Salvage re-scatters itself on the MazeGeneration this
+		-- rebuild is about to fire).
+		local drops = workspace:FindFirstChild("Drops")
+		if drops then
+			drops:ClearAllChildren()
+		end
+
+		MazeService.rebuild(Random.new(os.clock() * 1000):NextInteger(1, 2 ^ 31 - 1))
+
+		-- Re-bind SYNCHRONOUSLY rather than waiting on the MazeGeneration
+		-- listener below. Roblox signals are deferred, so that listener has not
+		-- run yet at this point — everything after this line (teleporting to the
+		-- new SpawnLocation, shutting the new Door) would otherwise be acting on
+		-- the previous round's destroyed instances. bindToMaze is idempotent, so
+		-- the deferred call landing again a moment later is harmless.
+		bindToMaze()
+
+		for _, plr in Players:GetPlayers() do
+			resetState(plr)
+			resetRunAttributes(plr)
+			teleportToStaging(plr)
+		end
+
+		runStaging()
+		extracting = false
+	end
+
+	local function onExtractTouched(hit: BasePart)
+		if extracting then
 			return
 		end
-		playerState.escaped = true
-		player:SetAttribute("Escaped", true) -- tells the hunter to stop chasing this player
-		-- Every hunter sprints for the centre for a few seconds — converging on
-		-- the pad in shot for the escape cinematic, arriving too late.
-		workspace:SetAttribute("EvacAlert", os.clock())
-
-		local elapsed = if playerState.startedAt then os.clock() - (playerState.startedAt :: number) else 0
-
-		-- Personal best. Guard `data` being nil (profile still loading) as no
-		-- best; send the packet after SetValue so the payload and the replica
-		-- agree.
-		local data = PlayerDataService.GetData(player)
-		local previous = if data and data.Ringfall then data.Ringfall.BestTimeSeconds else 0
-		local isNewBest = previous <= 0 or elapsed < previous
-		if isNewBest then
-			PlayerDataService.SetValue(player, { "Ringfall", "BestTimeSeconds" }, elapsed)
+		local player = playerFromPart(hit)
+		if not player then
+			return
 		end
-		Net.Escaped.sendTo({
-			timeSeconds = elapsed,
-			bestSeconds = if isNewBest then elapsed else previous,
-			isNewBest = isNewBest,
-		}, player)
-		setCharacterAnchored(character, true)
+		if not player:GetAttribute("HasVault") then
+			return -- everyone else touching the pad does nothing
+		end
+		extracting = true
+		endRound(player)
 	end
 
 	-- (Re)binds to the current maze geometry. Called once at Start and again
-	-- after every rebuild, because ClearAllChildren destroys both the gate and
-	-- the zone.
-	local function bindToMaze()
+	-- after every rebuild, because ClearAllChildren destroys the Staging
+	-- folder's Door/ExtractPad (and the Maze folder's EscapeZone) every time.
+	function bindToMaze()
 		local mazeFolder = workspace:WaitForChild("Maze")
-		local exitGate = mazeFolder:WaitForChild("ExitGate") :: BasePart
+		local stagingFolder = workspace:WaitForChild("Staging")
+		local extractPad = stagingFolder:WaitForChild("ExtractPad") :: BasePart
+		doorPart = stagingFolder:WaitForChild("Door") :: BasePart
+		-- Re-read the shut position: MazeService rebuilds the Staging folder
+		-- every round, so this is a brand new part each time.
+		doorShutCFrame = (doorPart :: BasePart).CFrame
 
-		if gateConnection then
-			gateConnection:Disconnect()
+		if extractConnection then
+			extractConnection:Disconnect()
 		end
 		if zonePart then
 			zonePart:Destroy()
@@ -148,16 +257,16 @@ function EscapeService.Start()
 		newZonePart.Parent = mazeFolder
 		zonePart = newZonePart
 
-		gateConnection = exitGate.Touched:Connect(onGateTouched)
-	end
-
-	local function respawnCharacter(player: Player, character: Model)
-		resetState(player)
-		setCharacterAnchored(character, false)
+		extractConnection = extractPad.Touched:Connect(onExtractTouched)
 	end
 
 	local function onCharacterAdded(player: Player, character: Model)
-		respawnCharacter(player, character)
+		resetState(player)
+		-- A late joiner mid-round waits out the Active phase frozen in the
+		-- staging room rather than dropping into a live maze — the next
+		-- round's teleport-everyone step (endRound) unanchors them same as
+		-- everyone else.
+		setCharacterAnchored(character, workspace:GetAttribute("RoundState") == "Active")
 	end
 
 	local function onPlayerAdded(player: Player)
@@ -179,7 +288,8 @@ function EscapeService.Start()
 		state[player] = nil
 	end)
 
-	-- Timer start: first time a player's character leaves the spawn zone.
+	-- Timer start: first time a player's character leaves the staging room.
+	-- Cosmetic only now — it's a stat, not the score. See docs/game/Escape.md.
 	RunService.Heartbeat:Connect(function()
 		for _, player in Players:GetPlayers() do
 			local character = player.Character
@@ -208,45 +318,7 @@ function EscapeService.Start()
 	bindToMaze()
 	workspace:GetAttributeChangedSignal("MazeGeneration"):Connect(bindToMaze)
 
-	-- Restart: a server-wide new round — new walls, new far spawn, everyone
-	-- reset. Per-player mazes would need instancing and are out of scope.
-	Net.Restart.listen(function(_payload, player)
-		-- Only a player who actually escaped may start a new round. Restart is a
-		-- client-sent packet and now rebuilds the world for EVERYONE, so without
-		-- this guard any client could spam it and re-carve the maze under other
-		-- players mid-run. Never trust the client to have earned the call.
-		if not getState(player).escaped then
-			return
-		end
-
-		MazeService.rebuild(Random.new(os.clock() * 1000):NextInteger(1, 2 ^ 31 - 1))
-
-		for _, plr in Players:GetPlayers() do
-			resetState(plr)
-			-- Checkpoint stores a raw world-space CFrame; after a re-carve that
-			-- exact point may be inside a new wall, and HunterService.catchPlayer
-			-- teleports caught players straight to it. Must clear, not optional.
-			plr:SetAttribute("Checkpoint", nil)
-			plr:SetAttribute("CheckpointRing", nil)
-			plr:SetAttribute("SafeUntil", nil)
-			-- Per-run scavenge (Pickups feature): ephemeral, not PlayerData, wiped
-			-- on RUN IT BACK same as the checkpoint state above.
-			plr:SetAttribute("HasGun", nil)
-			plr:SetAttribute("Ammo", nil)
-			plr:SetAttribute("HasCompass", nil)
-			plr:SetAttribute("HasFlashlight", nil)
-			plr:SetAttribute("StaminaBonus", nil)
-			-- Fresh round = full bar (RUN IT BACK only teleports, so HealthService's
-			-- CharacterAdded refill doesn't fire).
-			plr:SetAttribute("Health", plr:GetAttribute("MaxHealth") or 100)
-			local character = plr.Character
-			if not character then
-				continue
-			end
-			setCharacterAnchored(character, false)
-			character:PivotTo(spawnLocation.CFrame + Vector3.new(0, 3, 0))
-		end
-	end)
+	runStaging()
 end
 
 return EscapeService
