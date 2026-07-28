@@ -89,7 +89,7 @@ Per-feature docs are in [`docs/game/`](docs/game/index.md).
 ## Not built yet
 
 **The store.** Cash, permanent unlocks and per-run rentals are specced in
-`TASKPLAN-extraction-loop.md` (Phase 6) but deliberately unbuilt — the prices are
+`.taskplans/TASKPLAN-extraction-loop.md` (Phase 6) but deliberately unbuilt — the prices are
 unguessable until a typical run's payout is known. Haul is currently reported at
 round end and then cleared, so there is no economy.
 
