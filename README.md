@@ -1,74 +1,118 @@
-# Boil
+# Ringfall
 
-Opinionated Roblox boilerplate: **Rojo + Wally + React (jsdotlua)** in a **Feature-Sliced Design** layout, managed by **Rokit**, with a **Lune splitter** that colocates feature code in one folder and routes it to the correct Roblox service at sync time.
+A Roblox extraction game. You drop in at the edge of a circular maze, descend
+through three sealed districts to the vault at its centre, and carry it back out
+the way you came — while six hunters, every one of them alerted the moment you
+take it, come to meet you.
 
-## Stack
+Built on [Boil](#framework) (Rojo + Wally + React, Feature-Sliced Design).
 
-| Layer         | Choice                                                    |
-| ------------- | --------------------------------------------------------- |
-| Toolchain     | Rokit (rojo, wally, lune)                                 |
-| Sync          | Rojo 7 reading from `build/` (splitter output) + `src/`   |
-| Packages      | Wally; React + ReactRoblox (jsdotlua/react 17)            |
-| Data          | ProfileStore (server-realm) + ReplicaService              |
-| Networking    | ffrostflame/bytenet (schema-defined, buffer-packed)       |
-| Admin console | evaera/cmdr with a username allowlist hook                |
-| Utilities     | sleitnick: loader, trove, signal                          |
+## The round
 
-## Layout
+1. **Staging.** Everyone waits in a room outside the maze with the extraction pad
+   in plain sight, so the return trip is taught without a word of tutorial. A
+   countdown runs, the door drops.
+2. **Descend.** Each district is walled off except for a **single gate**, so
+   getting inward means searching a whole ring for one opening. Salvage is
+   scattered throughout, worth more the deeper it spawns.
+3. **The vault.** Taking it trips the alarm: every hunter in the maze converges
+   on the carrier, and every player's compass swings round to point at them. The
+   chamber itself is a sanctuary — nothing can touch you while you're standing in
+   it. Leaving is your choice to make.
+4. **Extract.** Back out through the same three gates, loaded and hunted. The
+   vault reaching the pad ends the round for everyone; everyone banks whatever
+   they were carrying.
+5. **Caught?** Your haul spills where you died, and if you had the vault it drops
+   as its own object that *anyone* can claim. You wake at the last gate you
+   passed. Go back in for it, or walk out with nothing.
 
-```
-src/features/<Feature>/       colocated feature code (what you edit)
-  ├── init.luau               public shared surface
-  ├── Constants.luau          shared config / tunables
-  ├── <Name>.ui.luau          React components (shared)
-  ├── <Name>Service.server.luau    server-realm logic
-  └── <Name>Controller.client.luau client-realm logic
+Free-for-all — one player is simply a race with nobody else in it, so it plays
+solo. Nothing carries between rounds except your record, which is what keeps a
+loss a loss.
 
-src/server/init.server.luau   Script entry; loads *Service modules
-src/client/init.client.luau   LocalScript entry; loads *Controller modules + mounts React
-src/shared/utils/             cross-feature utilities (incl. LoadOrdered)
+## Studio assets you must supply
 
-tools/split.luau              Lune splitter (see docs/architecture.md)
-build/                        generated, gitignored — Rojo reads from here
-```
+Rojo syncs code only. A fresh clone will **not** boot without these:
 
-Filename suffix → destination:
+| Where | What |
+| ----- | ---- |
+| `Workspace` | one `SpawnLocation` (the maze repositions it every round) |
+| `ServerStorage.PickupModels` | art for the pickups — a `Model`, `Tool` or single part per kind, named to match the `model` field in `Pickups/Constants.luau` |
+| `Workspace.MusicTracks` | four `Sound`s named `STAGING`, `DESCENT`, `ALARM`, `ROUND_END_STING` |
 
-| Source                    | Resulting Studio path                                     |
-| ------------------------- | --------------------------------------------------------- |
-| `*.server.luau`           | `ServerScriptService.Features.<Feature>.<Name>`           |
-| `*.client.luau`           | `StarterPlayerScripts.Features.<Feature>.<Name>`          |
-| `*.ui.luau`, `*.luau`     | `ReplicatedStorage.Features.<Feature>.<Name>`             |
+Missing pickup art falls back to coloured neon balls; missing music cues stay
+silent. Only the `SpawnLocation` is mandatory.
 
-## Example features
-
-- `HealthSystem` — minimal feature with a shared Constants module and a React HUD label.
-- `PlayerData` — ProfileStore + ReplicaService lifecycle (load on join, release on leave, per-player replica).
-- `Cmdr` — Cmdr console bootstrap with a `BeforeRun` hook gating by username allowlist.
-- `Notes` — end-to-end demo: React TextBox → Net event → server validates → Replica mutation → autosave via ProfileStore → replica diff → UI re-renders.
+Roblox audio and animation privacy applies: assets must be owned by the
+experience's creator (or group), or licensed from the Creator Store. A random
+asset id off the web silently fails to load.
 
 ## Getting started
 
 ```bash
-rokit install                           # installs rojo, wally, lune
-wally install                           # populates Packages/ and ServerPackages/
+rokit install                           # rojo, wally, lune
+wally install                           # Packages/ and ServerPackages/
 lune run tools/split -- --watch         # terminal 1: regenerate build/ on change
 rojo serve                              # terminal 2: sync to Studio
 ```
 
-Then in Studio connect via the Rojo plugin. For ProfileStore persistence, enable **Game Settings → Security → Enable Studio Access to API Services**.
+Connect via the Rojo plugin **in Edit mode** — Rojo cannot sync during a
+playtest, and trying produces `Http requests can only be executed by game server`.
 
-## Load order
+`lune run tools/split` completing without throwing is the signal that matters.
+`rojo build` does **not** validate Luau and will pass over syntax errors.
 
-Modules expose an optional `Priority` number (lower = earlier). The entry scripts sort via `src/shared/utils/LoadOrdered.luau` before calling `Start`. Used here so `PlayerDataService` (`Priority = 1`) starts before any service that reads player data.
+Two more checks worth running before a commit:
 
-## Auto-start contract
+```bash
+lune run tools/check-views              # views stay dumb (no net/persistence in UI)
+lune run tools/check-framework-boundary # framework never names a feature
+```
 
-The entry scripts use `Loader.MatchesName("Service$" | "Controller$")`, so only modules whose Studio name ends in `Service` or `Controller` are auto-started. Other modules under a feature folder (UI components, view containers, helpers) are loaded lazily via normal `require`.
+## Features
 
-## Docs
+Gameplay lives in `src/features/`, one folder per feature, each removable.
+Per-feature docs are in [`docs/game/`](docs/game/index.md).
+
+| Feature | What it owns |
+| ------- | ------------ |
+| `Maze` | Maze generation, sealed districts and gates, the staging room, the round state machine |
+| `Salvage` | Haul, the vault and its alarm, drop/steal/recover |
+| `Hunter` | The stalkers: sensing, chase/search/wander, health, the catch |
+| `Health` | Player HP — hunter-contact drain, medkits, death at 0 |
+| `Gun` | Client-request / server-authoritative shooting |
+| `Pickups` | Scavenged gear scattered per round |
+| `Checkpoint` | Respawn points for recovery runs |
+| `Sprint`, `LookBack`, `Flashlight`, `Atmosphere`, `Music`, `Controls` | Movement, camera, and presentation |
+| `PlayerData`, `Settings`, `UIShell`, `Cmdr` | Framework-side plumbing |
+
+## Not built yet
+
+**The store.** Cash, permanent unlocks and per-run rentals are specced in
+`TASKPLAN-extraction-loop.md` (Phase 6) but deliberately unbuilt — the prices are
+unguessable until a typical run's payout is known. Haul is currently reported at
+round end and then cleared, so there is no economy.
+
+## Framework
+
+Ringfall is built on Boil: **Rojo + Wally + React (jsdotlua)**, Feature-Sliced
+Design, managed by **Rokit**, with a **Lune splitter** that colocates feature code
+in one folder and routes it to the right Roblox service at sync time.
+
+Filename suffix → destination:
+
+| Source | Resulting Studio path |
+| ------ | --------------------- |
+| `*.server.luau` | `ServerScriptService.Features.<Feature>.<Name>` |
+| `*.client.luau` | `StarterPlayerScripts.Features.<Feature>.<Name>` |
+| `*.ui.luau`, `*.luau` | `ReplicatedStorage.Features.<Feature>.<Name>` |
+
+Modules whose name ends in `Service` or `Controller` are auto-started; an
+optional `Priority` (lower = earlier) orders them. Features extend each other
+through registration and shared attributes, never by editing each other's source.
 
 - [docs/getting-started.md](docs/getting-started.md) — install, dev loop, verification
 - [docs/architecture.md](docs/architecture.md) — split model, entry flow, load ordering
-- [docs/adding-a-feature.md](docs/adding-a-feature.md) — feature workflow, priority bands, Constants pattern
+- [docs/adding-a-feature.md](docs/adding-a-feature.md) — feature workflow, priority bands
 - [docs/reference.md](docs/reference.md) — package table, sync map, filename rules
+- [docs/game/index.md](docs/game/index.md) — per-feature game docs
