@@ -59,13 +59,15 @@ Hunter/Checkpoint/Escape/Pickups):
 2. Bucket every remaining key by `MazeNav.districtOf(MazeNav.bandOf(key))`.
 3. Shuffle each bucket independently with an **unseeded** `Random.new()`, so
    placement differs every play even on the same maze seed.
-4. Take `count` distinct cells per district and build a small Neon block
-   (`SalvageValue` attribute, `PER_DISTRICT[district].color`) floated
-   `FLOAT_Y` studs above each cell centre.
+4. Take `count` distinct cells per district and build one object
+   (`SalvageValue` attribute) floated `FLOAT_Y` studs above each cell centre —
+   the user's model if they placed one, else a coloured Neon block. See
+   *Art* below.
 
-Touch → `SalvageService.addHaul(player, value)` → `Destroy()`. Debounced with
-the same `grabbed`-flag-checked-before-any-yield pattern
-`PickupsService.attachTouch` uses.
+Touch → `SalvageService.addHaul(player, value)` → `Destroy()`. Debounced by
+`attachGrab`, which binds `Touched` on **every** `BasePart` of the object behind
+one shared `grabbed` flag: a multi-part model would otherwise pay out once per
+limb that brushed it in the same frame.
 
 ## `Haul`
 
@@ -232,9 +234,70 @@ for the drop-on-catch path — the same cross-feature server require
 `EscapeService` already uses for `MazeService`. `Priority = 12`, matching
 `PickupsService` (no ordering dependency between them).
 
+## Art
+
+Every salvage object goes through `buildObject`, a clone-or-fallback path
+modelled on `PickupsService.buildPickup`. It looks for a template under
+**`ServerStorage.SalvageModels`** and falls back to the coloured block the
+feature shipped with when one is missing — so the game works with zero art, and
+each kind upgrades independently the moment its model appears.
+
+| Child of `SalvageModels` | Used for | Fallback |
+| ------------------------ | -------- | -------- |
+| `Backpack` | District 3 salvage (outer, value 10) | green neon block |
+| `DuffelBag` | District 2 salvage (mid, value 30) | cyan neon block |
+| `Briefcase` | District 1 salvage (inner, value 75) | violet neon block |
+
+**Three models, and only three.** Death spills (`dropHaul`) and the dropped
+vault (`dropVault`) deliberately stay code-built blocks — a spill must not share
+a silhouette with scattered salvage ("someone died here" ≠ "nobody has been down
+here yet"), and the vault must never be mistaken for loot at all. Neither has a
+`model` field to set.
+
+Names come from `Constants.PER_DISTRICT[n].model`, decoupled from the mechanic
+so the art can be renamed without touching code. Anything that **is or contains
+a `BasePart`** works — `Model`, `MeshPart`, `Tool`, `Accessory`, whatever the
+Toolbox hands you — and the builder normalises it into a `Model` container. The
+check is deliberately not a class whitelist: an earlier `Model`/`Tool`/`BasePart`
+whitelist silently rejected an `Accessory` and fell back to a white block with no
+warning, which is indistinguishable from art that simply wasn't placed.
+`salvageTemplate` now warns on a configured-but-unusable name.
+
+What `buildObject` does to a cloned template, and **why each step matters**:
+
+- **Strips every `LuaSourceContainer`.** A free-model `Tool` can ship its own
+  server `Script`s that run the instant it enters the world. Salvage is pure
+  decoration.
+- **Anchors every `BasePart`,** so the object hangs where it's placed regardless
+  of the art's own welds or unanchored children.
+- **`CanCollide = false`, `Massless = true`,** so a piece never blocks a
+  corridor, and nesting inside a `Model` (not a direct child of `workspace`)
+  stops a `Tool` auto-equipping on touch.
+- **Re-applies the tier glow.** This is the one that bites: a realistic dark
+  prop in an unlit maze is invisible, and the district colour *is* the value
+  tier — it's how a player decides from down a corridor whether a piece is worth
+  the detour. Pieces and spills get a `PointLight` in their tier colour; the
+  dropped vault gets an occluded `Highlight` instead, so it's findable through
+  the fog without lighting up the corridor and giving its position to everyone
+  at once.
+
+Highlights are used sparingly on purpose — Roblox degrades past roughly 31 on
+screen, and a round can have 24 salvage pieces out at once.
+
+**Keep the tier colours saturated.** `Neon` renders the raw `Color3` at full
+brightness, so anything pale washes out to white. The first palette here was
+grey / pale blue / lilac and every tier read as an identical white cube in game
+— destroying the one signal the colour exists to carry. Green → cyan → violet
+all survive Neon, and none of them collide with the amber of a death spill.
+
+Keep models around **2–3 studs**; pieces float at `FLOAT_Y = 3`.
+
 ## Studio assets
 
-**None.** Everything here is code-built, per the plan's "no Studio art" rule
-for this pass. If the user later drops models into
-`ServerStorage.PickupModels`, `PickupsService`'s clone-or-fallback path is
-the pattern to copy for salvage pieces too.
+**Optional.** Create a `Folder` named `SalvageModels` under `ServerStorage` and
+put `Backpack`, `DuffelBag` and `Briefcase` inside it. Anything absent falls
+back to its block (with a warning) — there is no required asset, and no code
+change per model.
+
+`ServerStorage.PickupModels` is a separate folder for the Pickups feature, so
+salvage art and pickup art can be swapped without disturbing each other.

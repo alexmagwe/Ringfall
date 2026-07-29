@@ -12,6 +12,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
 local Constants = require(ReplicatedStorage.Features.Salvage.Constants)
@@ -25,6 +26,177 @@ local function playerFromPart(part: BasePart): Player?
 		return nil
 	end
 	return Players:GetPlayerFromCharacter(model)
+end
+
+------------------------------------------------------------------------------
+-- Building salvage objects (art if the user placed any, neon block if not)
+------------------------------------------------------------------------------
+
+-- How one kind of salvage object looks. `model` names an optional child under
+-- ServerStorage.SalvageModels; everything else describes the fallback block and
+-- the glow that survives either way.
+type Look = {
+	name: string,
+	model: string?,
+	color: Color3,
+	size: number,
+	-- Fallback block only; a real model keeps its own materials. Default Neon.
+	material: Enum.Material?,
+	-- PointLight tint/range. nil = no light.
+	lightColor: Color3?,
+	lightRange: number?,
+	-- Occluded outline colour. nil = no Highlight. Used sparingly: Roblox
+	-- degrades past roughly 31 Highlights on screen, and a round can have 24
+	-- salvage pieces out at once, so pieces use light and the vault uses this.
+	outlineColor: Color3?,
+}
+
+-- Does this instance actually have geometry to render? The check is "is or
+-- contains a BasePart" rather than a class whitelist, because Studio art
+-- arrives in more shapes than a whitelist ever anticipates — a Model, a bare
+-- MeshPart, a Tool, and (the case that caught us) an **Accessory**, which a
+-- Model/Tool/BasePart check silently rejected so the piece fell back to a white
+-- block with no warning. Anything holding a BasePart can be anchored, lit and
+-- touched, which is all this feature needs.
+local function hasGeometry(instance: Instance): boolean
+	if instance:IsA("BasePart") then
+		return true
+	end
+	return instance:FindFirstChildWhichIsA("BasePart", true) ~= nil
+end
+
+-- The art template named `modelName` under ServerStorage.SalvageModels, if the
+-- user placed one; nil otherwise (caller falls back to a neon block). Warns
+-- rather than failing silently when a name is configured but unusable — a
+-- missing model looks exactly like a working one that fell back, and that
+-- ambiguity costs more debugging time than the warning costs to read.
+local function salvageTemplate(modelName: string?): Instance?
+	if not modelName then
+		return nil
+	end
+	local folder = ServerStorage:FindFirstChild(Constants.MODELS_FOLDER)
+	if folder == nil then
+		return nil -- no art placed at all; the fallback is the expected path
+	end
+	local template = folder:FindFirstChild(modelName)
+	if template == nil then
+		warn(`[Salvage] no "{modelName}" under ServerStorage.{Constants.MODELS_FOLDER}; using the fallback block`)
+		return nil
+	end
+	if not hasGeometry(template) then
+		warn(`[Salvage] "{modelName}" has no BasePart to render; using the fallback block`)
+		return nil
+	end
+	return template
+end
+
+local function addGlow(object: Instance, host: BasePart?, look: Look)
+	if look.lightColor and host then
+		local light = Instance.new("PointLight")
+		light.Color = look.lightColor
+		light.Range = look.lightRange or 12
+		light.Brightness = 1.5
+		light.Parent = host
+	end
+	if look.outlineColor then
+		local highlight = Instance.new("Highlight")
+		highlight.FillTransparency = 1
+		highlight.OutlineColor = look.outlineColor
+		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+		highlight.Parent = object
+	end
+end
+
+-- Builds one salvage object at `position` and parents it to `parent`: the
+-- user's model if they placed one, else the coloured block this feature shipped
+-- with. Either way it comes out anchored, non-colliding, touchable and glowing
+-- in its tier colour — swapping neon boxes for realistic props in an unlit maze
+-- makes them invisible, and losing the colour costs the player the "is this
+-- worth the detour?" read at distance.
+local function buildObject(look: Look, position: Vector3, parent: Instance): Instance
+	local template = salvageTemplate(look.model)
+
+	if template == nil then
+		local piece = Instance.new("Part")
+		piece.Name = look.name
+		piece.Size = Vector3.new(look.size, look.size, look.size)
+		piece.Material = look.material or Enum.Material.Neon
+		piece.Color = look.color
+		piece.Anchored = true
+		piece.CanCollide = false
+		piece.CanTouch = true
+		piece.CFrame = CFrame.new(position)
+		addGlow(piece, piece, look)
+		piece.Parent = parent
+		return piece
+	end
+
+	-- Always end up with a Model container, whatever shape the art is: a Model
+	-- clone is used directly; a Tool or bare BasePart is nested in a fresh one.
+	-- Uniform container => uniform pivot, one attribute host, one grab.
+	local clone = template:Clone()
+	local model: Model
+	if clone:IsA("Model") then
+		model = clone
+	else
+		model = Instance.new("Model")
+		clone.Parent = model
+	end
+	model.Name = look.name
+
+	-- Strip scripts. A free-model Tool can ship its own server Scripts that
+	-- would run the moment it enters the world — the same free-model hazard
+	-- PickupsService guards against. Salvage is pure decoration.
+	for _, d in model:GetDescendants() do
+		if d:IsA("LuaSourceContainer") then
+			d:Destroy()
+		end
+	end
+
+	-- Anchored so it hangs where it's placed regardless of the art's welds,
+	-- non-colliding so it never blocks a corridor, and nested in a Model (not a
+	-- direct child of workspace) so a Tool can't auto-equip on touch.
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanTouch = true
+			d.Massless = true
+		end
+	end
+
+	model:PivotTo(CFrame.new(position))
+	addGlow(model, model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true), look)
+	model.Parent = parent
+	return model
+end
+
+-- One grab fires from ANY BasePart of the object, so a multi-part model can't
+-- double-grant: the shared `grabbed` flag closes the window before the caller's
+-- Destroy lands. Without it a player brushing a model with several limbs in the
+-- same frame would be paid once per limb.
+local function attachGrab(object: Instance, onGrab: (Player) -> ())
+	local grabbed = false
+	local function onTouch(hit: BasePart)
+		if grabbed or not object.Parent then
+			return
+		end
+		local player = playerFromPart(hit)
+		if not player then
+			return
+		end
+		grabbed = true
+		onGrab(player)
+	end
+
+	if object:IsA("BasePart") then
+		object.Touched:Connect(onTouch)
+	end
+	for _, d in object:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Touched:Connect(onTouch)
+		end
+	end
 end
 
 -- Exposed for other features (HunterService's drop path, the round-end bank)
@@ -56,8 +228,13 @@ local function currentVaultPosition(): Vector3?
 	end
 	local dropsFolder = workspace:FindFirstChild(Constants.DROPS_FOLDER)
 	local dropped = dropsFolder and dropsFolder:FindFirstChild("DroppedVault")
+	-- Either shape: a bare fallback block, or a Model once the user drops real
+	-- art into ServerStorage.SalvageModels.
 	if dropped and dropped:IsA("BasePart") then
 		return dropped.Position
+	end
+	if dropped and dropped:IsA("Model") then
+		return dropped:GetPivot().Position
 	end
 	return nil
 end
@@ -122,35 +299,18 @@ function SalvageService.dropHaul(position: Vector3, value: number)
 		return
 	end
 
-	local pile = Instance.new("Part")
-	pile.Name = "HaulDrop"
-	pile.Size = Vector3.new(2, 2, 2)
-	pile.Material = Enum.Material.Neon
-	pile.Color = Color3.fromRGB(255, 200, 90)
-	pile.Anchored = true
-	pile.CanCollide = false
-	pile.CanTouch = true
-	pile.CFrame = CFrame.new(position + Vector3.new(0, 1, 0))
+	-- No `model`: a spill is deliberately the code-built block, so it never
+	-- shares a silhouette with scattered salvage (see Constants.DROP_COLOR).
+	local pile = buildObject({
+		name = "HaulDrop",
+		color = Constants.DROP_COLOR,
+		size = Constants.DROP_SIZE,
+		lightColor = Constants.DROP_COLOR,
+		lightRange = Constants.DROP_LIGHT_RANGE,
+	}, position + Vector3.new(0, 1, 0), dropsFolder)
 	pile:SetAttribute("SalvageValue", value)
 
-	local light = Instance.new("PointLight")
-	light.Color = pile.Color
-	light.Range = 14
-	light.Brightness = 2
-	light.Parent = pile
-
-	pile.Parent = dropsFolder
-
-	local grabbed = false
-	pile.Touched:Connect(function(hit: BasePart)
-		if grabbed or not pile.Parent then
-			return
-		end
-		local player = playerFromPart(hit)
-		if not player then
-			return
-		end
-		grabbed = true
+	attachGrab(pile, function(player: Player)
 		SalvageService.addHaul(player, value)
 		pile:Destroy()
 	end)
@@ -168,34 +328,16 @@ function SalvageService.dropVault(position: Vector3)
 		return
 	end
 
-	local vault = Instance.new("Part")
-	vault.Name = "DroppedVault"
-	vault.Size = Vector3.new(3, 3, 3)
-	vault.Material = Enum.Material.Metal
-	vault.Color = Color3.fromRGB(20, 20, 22)
-	vault.Anchored = true
-	vault.CanCollide = false
-	vault.CanTouch = true
-	vault.CFrame = CFrame.new(position + Vector3.new(0, 1.5, 0))
+	-- No `model` either: the vault must never be mistaken for loot.
+	local vault = buildObject({
+		name = "DroppedVault",
+		color = Constants.VAULT_DROP_COLOR,
+		size = Constants.VAULT_DROP_SIZE,
+		material = Enum.Material.Metal,
+		outlineColor = Constants.VAULT_DROP_OUTLINE,
+	}, position + Vector3.new(0, 1.5, 0), dropsFolder)
 
-	local highlight = Instance.new("Highlight")
-	highlight.FillTransparency = 1
-	highlight.OutlineColor = Color3.fromRGB(255, 195, 60)
-	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
-	highlight.Parent = vault
-
-	vault.Parent = dropsFolder
-
-	local grabbed = false
-	vault.Touched:Connect(function(hit: BasePart)
-		if grabbed or not vault.Parent then
-			return
-		end
-		local player = playerFromPart(hit)
-		if not player then
-			return
-		end
-		grabbed = true
+	attachGrab(vault, function(player: Player)
 		player:SetAttribute("HasVault", true)
 		vault:Destroy()
 	end)
@@ -216,42 +358,21 @@ function SalvageService.Start()
 	drops.Name = Constants.DROPS_FOLDER
 	drops.Parent = workspace
 
-	local function attachTouch(piece: BasePart, value: number)
-		local grabbed = false
-		piece.Touched:Connect(function(hit: BasePart)
-			if grabbed or not piece.Parent then
-				return
-			end
-			local player = playerFromPart(hit)
-			if not player then
-				return
-			end
-			grabbed = true
-			SalvageService.addHaul(player, value)
+	local function buildPiece(position: Vector3, spec: { value: number, model: string?, color: Color3 })
+		local piece = buildObject({
+			name = "Salvage",
+			model = spec.model,
+			color = spec.color,
+			size = Constants.PIECE_SIZE,
+			lightColor = spec.color,
+			lightRange = Constants.PIECE_LIGHT_RANGE,
+		}, position, folder)
+		piece:SetAttribute("SalvageValue", spec.value)
+
+		attachGrab(piece, function(player: Player)
+			SalvageService.addHaul(player, spec.value)
 			piece:Destroy()
 		end)
-	end
-
-	local function buildPiece(position: Vector3, value: number, color: Color3)
-		local piece = Instance.new("Part")
-		piece.Name = "Salvage"
-		piece.Size = Vector3.new(1.5, 1.5, 1.5)
-		piece.Material = Enum.Material.Neon
-		piece.Color = color
-		piece.Anchored = true
-		piece.CanCollide = false
-		piece.CanTouch = true
-		piece.CFrame = CFrame.new(position)
-		piece:SetAttribute("SalvageValue", value)
-
-		local light = Instance.new("PointLight")
-		light.Color = color
-		light.Range = 12
-		light.Brightness = 1.5
-		light.Parent = piece
-
-		piece.Parent = folder
-		attachTouch(piece, value)
 	end
 
 	-- Unseeded on purpose: placement differs every play, even on the same
@@ -285,7 +406,7 @@ function SalvageService.Start()
 			for i = 1, math.min(spec.count, #bucket) do
 				local key = bucket[i]
 				local position = MazeNav.cellPos[key] + Vector3.new(0, Constants.FLOAT_Y, 0)
-				buildPiece(position, spec.value, spec.color)
+				buildPiece(position, spec)
 			end
 		end
 	end
