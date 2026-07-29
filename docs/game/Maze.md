@@ -172,12 +172,19 @@ round):
      [Escape.md](Escape.md)).
    - **Room** — centred at `RADII[13] + 40` = 574, half-depth 25 (kept
      under 30 studs so it can't overlap the sealed maze). Holds the
-     `ExtractPad` (a lit Neon disc, the win trigger — see
+     `ExtractPad` (a flat marked disc, the win trigger — see
      [Escape.md](Escape.md)) and `SpawnLocation`, positioned near the room's
      far wall facing back down the corridor. Since a polar angle is a
      straight line through the origin, "facing down the corridor" and
      "facing world-centre" are the same direction — no separate look-at
      target needed.
+   - **Palette:** the room gets exactly **one** accent, the `ExtractPad`, in a
+     muted sea-green. Everything else — walls, floor, `Door` — stays neutral
+     grey. The door was a saturated red until it, the pad and the blue-grey
+     shell added up to a three-hue lobby that read as noise; its state was never
+     carried by colour anyway (the countdown says how long is left, and it
+     slides into the floor to open). Tune via `DOOR_COLOR`,
+     `EXTRACT_PAD_COLOR` and `EXTRACT_PAD_SCALE`.
    - There is **no wall on the corridor's near end** — that opening is the
      perimeter cut itself, so the corridor's mouth lines up flush with it.
 3. Floor, side walls, and the far wall are built via `polarOffset` (like

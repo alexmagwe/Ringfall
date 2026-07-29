@@ -57,8 +57,20 @@ local STAGING_ROOM_HALF_DEPTH = 25 -- < 30: keeps the room clear of RADII[13] (5
 local STAGING_ROOM_FAR_R = STAGING_CENTER_R + STAGING_ROOM_HALF_DEPTH -- 599
 local STAGING_ROOM_NEAR_R = STAGING_CENTER_R - STAGING_ROOM_HALF_DEPTH -- 549 (corridor ends here)
 local STAGING_COLOR = Color3.fromRGB(60, 66, 74)
-local DOOR_COLOR = Color3.fromRGB(200, 70, 60)
-local EXTRACT_PAD_COLOR = Color3.fromRGB(80, 220, 160)
+-- The staging room gets exactly ONE accent, and it is the extraction pad — the
+-- thing the entire round loops back to. Everything else in here stays neutral.
+-- The door used to be a saturated red (200,70,60) which, against the mint pad
+-- and the blue-grey shell, made a three-hue lobby that read as noise. It is a
+-- warm dark grey now: still obviously a bulkhead against the cooler walls, and
+-- its state was never carried by colour anyway (the countdown says how long is
+-- left, and it slides into the floor to open).
+local DOOR_COLOR = Color3.fromRGB(88, 80, 76)
+-- Muted sea-green rather than the old (80,220,160) mint: legible as "stand
+-- here", quiet enough not to fight the room.
+local EXTRACT_PAD_COLOR = Color3.fromRGB(88, 148, 128)
+-- Fraction of the room's half-width. At the old 1.2 the pad was a 30-stud disc
+-- in a 50-stud room — it read as the floor rather than as a marking on it.
+local EXTRACT_PAD_SCALE = 0.7
 -- The round maze floor overhangs the perimeter wall by this much, so the world
 -- doesn't end flush against it. The staging floor must START at that overhang's
 -- outer edge, not at the perimeter — otherwise the two floors overlap for 30
@@ -353,7 +365,7 @@ local function buildStaging(theta: number): CFrame
 	local pad = Instance.new("Part")
 	pad.Name = "ExtractPad"
 	pad.Shape = Enum.PartType.Cylinder
-	pad.Size = Vector3.new(1, STAGING_HALF_WIDTH * 1.2, STAGING_HALF_WIDTH * 1.2)
+	pad.Size = Vector3.new(1, STAGING_HALF_WIDTH * EXTRACT_PAD_SCALE, STAGING_HALF_WIDTH * EXTRACT_PAD_SCALE)
 	pad.CFrame = CFrame.new(polar(STAGING_CENTER_R, theta, FLOOR_Y + 0.6)) * CFrame.Angles(0, 0, math.rad(90))
 	pad.Anchored = true
 	pad.CanCollide = false
