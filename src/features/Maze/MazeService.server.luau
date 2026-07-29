@@ -681,6 +681,9 @@ function MazeService.rebuild(seed: number)
 
 	-- Publish the navigation graph (cell centres + open adjacency) for AI.
 	MazeNav.reset()
+	-- The edge of the maze proper. Everything past this is the staging room and
+	-- its corridor, which have no cells — see MazeNav.perimeterR.
+	MazeNav.perimeterR = RADII[BANDS + 1]
 	for b = 0, BANDS do
 		for s = 0, sectorsOf(b) - 1 do
 			local key = MazeNav.cellKey(b, s)

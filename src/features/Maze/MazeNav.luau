@@ -13,6 +13,14 @@ MazeNav.ready = false
 MazeNav.cellPos = {} :: { [number]: Vector3 } -- [cellKey] -> floor-centre of the cell
 MazeNav.adj = {} :: { [number]: { number } } -- [cellKey] -> connected cellKeys
 
+-- XZ radius of the perimeter wall: the edge of the maze proper. Anything beyond
+-- it is the staging room and its corridor, which are NOT part of the maze — no
+-- cell exists out there, so nothing that navigates by this graph belongs there
+-- either. HunterService uses it to keep hunters inside and to treat the staging
+-- room as a sanctuary. Published by MazeService.rebuild alongside the graph; 0
+-- until the first build.
+MazeNav.perimeterR = 0
+
 function MazeNav.cellKey(band: number, sector: number): number
 	return band * 1000 + sector
 end
@@ -65,6 +73,7 @@ end
 function MazeNav.reset()
 	MazeNav.cellPos = {}
 	MazeNav.adj = {}
+	MazeNav.perimeterR = 0
 	MazeNav.ready = false
 end
 

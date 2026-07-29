@@ -14,7 +14,10 @@ Files:
   room (`workspace.Staging`), positions `SpawnLocation`, and publishes the
   navigation graph (`MazeNav`).
 - `src/features/Maze/MazeNav.luau` — shared nav graph (cell centres + open
-  adjacency) other features (Hunter, Checkpoint) read, and `MazeNav.districtOf`
+  adjacency, plus `MazeNav.perimeterR`, the XZ radius of the perimeter wall —
+  the maze's outer edge, which `HunterService` uses to keep hunters in and to
+  treat the staging room as a sanctuary) other features (Hunter, Checkpoint)
+  read, and `MazeNav.districtOf`
   — the single shared band-to-district mapping (see below).
 - `src/features/Maze/Constants.luau` — `SEED`, the season/default seed.
 

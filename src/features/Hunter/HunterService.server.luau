@@ -270,11 +270,32 @@ local function inSanctuary(plr: Player): boolean
 	return Vector2.new(p.X, p.Z).Magnitude < SANCTUARY_RADIUS
 end
 
+-- Beyond the perimeter wall: the staging room and its corridor. Hunters belong
+-- to the maze and nothing out there is theirs — the room is where players are
+-- parked during the countdown and where a carrier banks the round, so letting a
+-- hunter follow someone through the perimeter cut would make the one guaranteed
+-- safe space in the game not safe. The maze has no cells out there either, so a
+-- hunter that wandered out would be navigating off the end of its own graph.
+--
+-- Reads the boundary off MazeNav rather than hardcoding it, so a retuned RADII
+-- can't leave this stale. 0 before the first build; the guard is inert until then.
+local function outsideMaze(pos: Vector3): boolean
+	if MazeNav.perimeterR <= 0 then
+		return false
+	end
+	return Vector2.new(pos.X, pos.Z).Magnitude > MazeNav.perimeterR
+end
+
 local function outOfRound(plr: Player): boolean
 	if plr:GetAttribute("Escaped") or plr:GetAttribute("Caught") then
 		return true
 	end
 	if inSanctuary(plr) then
+		return true
+	end
+	local char = plr.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if hrp and outsideMaze((hrp :: BasePart).Position) then
 		return true
 	end
 	local safeUntil = plr:GetAttribute("SafeUntil")
@@ -474,6 +495,22 @@ function HunterService.Start()
 		task.spawn(function()
 			while hunter.Parent do
 				if MazeNav.ready then
+					-- Containment, checked before any behaviour. Targeting already
+					-- ignores anyone past the perimeter, but a hunter can still
+					-- drift out on MoveTo momentum near the cut, or be shoved by
+					-- physics. If it's outside, the only thing it does is walk
+					-- back to the nearest cell — no chase, no summon, no wander.
+					if outsideMaze(root.Position) then
+						hum.WalkSpeed = BASE_SPEED
+						local backIn = MazeNav.nearestCell(root.Position)
+						local c = backIn and MazeNav.cellPos[backIn]
+						if c then
+							hum:MoveTo(Vector3.new(c.X, root.Position.Y, c.Z))
+						end
+						task.wait(REPATH)
+						continue
+					end
+
 					local alert = workspace:GetAttribute("EvacAlert")
 					if typeof(alert) == "number" and os.clock() - alert < EVAC_ALERT_SECONDS then
 						-- An escape just happened: sprint for the centre so hunters

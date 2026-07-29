@@ -83,6 +83,35 @@ Each runs a loop every `REPATH` (0.7s) picking one of three states:
   `BASE_SPEED`, then gives up.
 - **Wander** — no lead. Picks random maze cells.
 
+### Hunters cannot leave the maze
+
+Checked before any of the three states. **The staging room and its corridor are
+off-limits** — everything past `MazeNav.perimeterR` (the perimeter wall's XZ
+radius, published by `MazeService.rebuild`). Two halves, because either alone
+leaks:
+
+- **Targeting.** `outOfRound` now returns true for any player outside the
+  perimeter, so they are invisible to `nearestSensed` *and* `nearestReachable` —
+  no chase, no contact drain, no catch. Same mechanism as the hub
+  `SANCTUARY_RADIUS`, just at the other end of the map.
+- **Containment.** If a hunter is itself outside — drifted out on `MoveTo`
+  momentum near the perimeter cut, or shoved by physics — its only behaviour is
+  to walk back to the nearest cell. It doesn't chase, respond to a summon, or
+  wander while out there.
+
+Without the first half a hunter would follow a fleeing carrier straight through
+the cut and camp the extraction pad, which would make the one guaranteed safe
+space in the game unsafe — including during the staging countdown, when every
+player is standing in that room unable to move. Without the second, a hunter
+already outside would be pathing off the end of its own graph: the maze has no
+cells out there.
+
+`farSpawn` was never a leak — it picks a radius of 180–480, always well inside
+the perimeter (534).
+
+The boundary is read off `MazeNav`, not hardcoded, so retuning `RADII` can't
+leave it stale. It reads 0 until the first build, and the guard is inert then.
+
 Sensing is pure line-of-sight: `canSee` raycasts against the `Maze` model and
 treats `Arc`, `Spoke` and `Perimeter` parts as blockers. Any player behind one of
 those is skipped entirely — **breaking line-of-sight is the whole stealth
