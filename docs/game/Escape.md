@@ -128,15 +128,33 @@ nothing else (`tools/check-views` enforces this).
   sets it now — the vault alarm (`HunterAlert` / `HunterAlertPos`) does that job
   better, since it tracks the carrier rather than a fixed point.
 - **`PlayerData.Ringfall.BestTimeSeconds`** still exists in the template but is
-  no longer written. Phase 6 replaces it with `Cash` and `BestHaul`.
+  no longer written. `Cash` and `BestHaul` replaced it as the things worth
+  keeping.
+
+## Banking
+
+`endRound` is the one moment a per-run number becomes permanent. For **every**
+player in the server (not just the carrier who extracted), `bankHaul` adds their
+`Haul` to `Ringfall.Cash` and raises `Ringfall.BestHaul` if the round beat it,
+through `PlayerDataService.SetValue` so the replica diff and the ProfileStore
+autosave stay in step.
+
+The `RoundEnded` packet reports exactly what was banked. A player whose profile
+hasn't loaded (or who is mid-leave) still appears on the board, but nothing is
+persisted for them — a missing profile isn't worth failing the round over.
+
+Banking runs **before** `resetRunAttributes` wipes `Haul`. Order matters: swap
+the two and everyone banks zero.
+
+Cash and unlocks are the only things that cross a round boundary. Everything
+else — haul, vault, rented kit, checkpoints — is cleared here. See
+[Store.md](Store.md).
 
 ## What's not built yet
 
-- Phase 6 (cash, the store, per-run rentals) is explicitly out of scope for
-  this pass — the plan gates it behind Phases 1–5 being playable, since the
-  prices are unguessable until a run's typical haul is known. Until then,
-  `RoundEnded` reports each player's haul but nothing banks it: haul is cleared
-  with the other per-run attributes at round end.
+- The **Map** store item. It needs the maze graph on the client, and
+  `MazeNav.cellPos`/`adj` are populated server-side only, so a minimap needs
+  graph replication first.
 
 ## Studio assets
 

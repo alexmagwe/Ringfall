@@ -21,6 +21,10 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local Net = require(ReplicatedStorage.Features.Maze.Net)
 local MazeService = require(ServerScriptService.Features.Maze.MazeService)
+-- Cross-feature server require, same shape as HunterService -> SalvageService.
+-- Banking is the one moment a per-run number becomes permanent, and it has to
+-- happen here because this is the only place that knows the round just ended.
+local PlayerDataService = require(ServerScriptService.Features.PlayerData.PlayerDataService)
 
 local EscapeService = {}
 
@@ -81,6 +85,37 @@ local function setCharacterAnchored(character: Model, anchored: boolean)
 	end
 end
 
+-- Profile key holding the permanent side of the economy (Cash, BestHaul,
+-- Unlocked). Registered by src/features/Maze/PlayerData.luau.
+local PROFILE_KEY = "Ringfall"
+
+-- Converts a player's per-run Haul into permanent Cash and returns the amount
+-- banked (which is also what the round-end board reports). Cash is the only
+-- thing that crosses a round boundary — the Haul attribute itself is wiped a
+-- few lines later by resetRunAttributes, along with the rest of the run.
+local function bankHaul(player: Player): number
+	local haul = player:GetAttribute("Haul")
+	local amount = if typeof(haul) == "number" then haul else 0
+	if amount <= 0 then
+		return 0
+	end
+
+	local data = PlayerDataService.GetData(player)
+	local slice = if data then data[PROFILE_KEY] else nil
+	if slice == nil then
+		-- Profile still loading, or the player is mid-leave. Report the haul on
+		-- the board but don't persist it; a missing profile is not an error
+		-- worth failing the whole round over.
+		return amount
+	end
+
+	PlayerDataService.SetValue(player, { PROFILE_KEY, "Cash" }, (slice.Cash or 0) + amount)
+	if amount > (slice.BestHaul or 0) then
+		PlayerDataService.SetValue(player, { PROFILE_KEY, "BestHaul" }, amount)
+	end
+	return amount
+end
+
 function EscapeService.Start()
 	if not workspace:GetAttribute("MazeReady") then
 		workspace:GetAttributeChangedSignal("MazeReady"):Wait()
@@ -130,6 +165,7 @@ function EscapeService.Start()
 		player:SetAttribute("Ammo", nil)
 		player:SetAttribute("HasFlashlight", nil)
 		player:SetAttribute("StaminaBonus", nil)
+		player:SetAttribute("MedCharges", nil)
 		player:SetAttribute("Haul", nil)
 		player:SetAttribute("HasVault", nil)
 		-- Fresh round = full bar (a teleport doesn't fire HealthService's
@@ -173,12 +209,12 @@ function EscapeService.Start()
 	local function endRound(winner: Player)
 		workspace:SetAttribute("RoundState", "Staging")
 
-		-- Bank every player's haul (Phase 6 will convert this to persisted
-		-- cash; until then this packet is the report).
+		-- Bank every player's haul into permanent Cash — everyone banks, not
+		-- just the carrier who extracted. The packet is the report of what was
+		-- just made permanent.
 		local hauls = {}
 		for _, plr in Players:GetPlayers() do
-			local haul = plr:GetAttribute("Haul")
-			table.insert(hauls, { name = plr.Name, haul = if typeof(haul) == "number" then haul else 0 })
+			table.insert(hauls, { name = plr.Name, haul = bankHaul(plr) })
 		end
 		Net.RoundEnded.sendToAll({ winnerName = winner.Name, hauls = hauls })
 

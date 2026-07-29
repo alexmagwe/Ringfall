@@ -1,17 +1,26 @@
 --!strict
--- Top-of-screen health bar. Pure presentation: reads the server-owned `Health` /
--- `MaxHealth` player attributes (they replicate automatically) and draws a bar.
--- No logic, no networking — the drain/heal all happen server-side.
+-- Top-of-screen health bar, plus the medkit charge readout and its key. Reads
+-- the server-owned `Health` / `MaxHealth` / `MedCharges` player attributes (they
+-- replicate automatically) and draws them. The only thing it sends is a request
+-- to spend a charge — HealthService decides whether one is actually spent, and
+-- all draining/healing happens server-side.
 --
 -- Auto-loaded: name ends in `Controller`.
 -- .client.luau => splitter routes to StarterPlayerScripts.Features.Health.
 
+local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Net = require(ReplicatedStorage.Features.Health.Net)
 
 local HealthController = {}
 
 local FULL_COLOR = Color3.fromRGB(80, 200, 100)
 local LOW_COLOR = Color3.fromRGB(225, 55, 55)
+local MEDKIT_COLOR = Color3.fromRGB(235, 120, 120)
+local MEDKIT_ACTION = "HealthUseMedkit"
+local MEDKIT_KEY = Enum.KeyCode.H
 
 function HealthController.Start()
 	local player = Players.LocalPlayer
@@ -75,6 +84,45 @@ function HealthController.Start()
 	player:GetAttributeChangedSignal("Health"):Connect(update)
 	player:GetAttributeChangedSignal("MaxHealth"):Connect(update)
 	update()
+
+	-- Medkit charges. Bottom-left, deliberately clear of the protected
+	-- top-centre vitals column and of the bottom-right ammo/haul readouts.
+	local medkit = Instance.new("TextLabel")
+	medkit.Size = UDim2.fromOffset(240, 34)
+	medkit.Position = UDim2.new(0, 16, 1, -16)
+	medkit.AnchorPoint = Vector2.new(0, 1)
+	medkit.BackgroundTransparency = 1
+	medkit.TextXAlignment = Enum.TextXAlignment.Left
+	medkit.TextColor3 = MEDKIT_COLOR
+	medkit.TextSize = 24
+	medkit.Font = Enum.Font.GothamBold
+	medkit.Text = ""
+	medkit.Visible = false
+	medkit.Parent = gui
+	local medkitStroke = Instance.new("UIStroke")
+	medkitStroke.Thickness = 2
+	medkitStroke.Color = Color3.fromRGB(0, 0, 0)
+	medkitStroke.Parent = medkit
+
+	local function updateMedkit()
+		local charges = player:GetAttribute("MedCharges")
+		local count = if typeof(charges) == "number" then charges else 0
+		medkit.Visible = count > 0
+		medkit.Text = string.format("MEDKIT x%d   [H]", count)
+	end
+
+	player:GetAttributeChangedSignal("MedCharges"):Connect(updateMedkit)
+	updateMedkit()
+
+	-- Request only: the server re-checks the charge count and that you're
+	-- actually hurt before anything is spent.
+	ContextActionService:BindAction(MEDKIT_ACTION, function(_, inputState)
+		if inputState ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		Net.UseMedkit.send()
+		return Enum.ContextActionResult.Sink
+	end, false, MEDKIT_KEY)
 end
 
 return HealthController

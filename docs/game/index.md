@@ -27,9 +27,10 @@ one-way dependency rule that keeps the framework updatable.
 | [Hunter.md](Hunter.md) | Maze stalkers — sensing, chase/search/wander, the catch (now spilling Haul/Vault), combat (health/death/explosion/respawn), the gunshot summon and the vault alarm, and the (now-dead) evac-alert convergence |
 | [Checkpoint.md](Checkpoint.md) | Sealed-district gate checkpoints — district (not band) tracking, respawn-at-gate, the floor-level stand CFrame, and why a checkpoint is a recovery point rather than a progress save post-extraction-loop |
 | [Salvage.md](Salvage.md) | The extraction loop's prize layer — depth-scaled scatter, the Vault + alarm, drop/steal/recover, nothing-carries-between-rounds, and the compass as standard equipment |
+| [Store.md](Store.md) | The staging-room shelf — permanent unlocks vs per-run rentals, banking, server-side purchase validation, and the `Store.luau` registration convention |
 | [Pickups.md](Pickups.md) | Per-run scavenge — gun, ammo, flashlight, stamina upgrade; scatter/grant/clear lifecycle + the model-clone convention |
 | [Flashlight.md](Flashlight.md) | Camera-cone light, gated on the `HasFlashlight` scavenge attribute |
-| [Health.md](Health.md) | Player HP — hunter-contact drain, MedKit heal, the top health bar, death-at-0 |
+| [Health.md](Health.md) | Player HP — hunter-contact drain, MedKit heal, stored medkit charges (H), the top health bar, death-at-0 |
 | [Gun.md](Gun.md) | Client-request/server-authority gun — ammo economy, the `Humanoid.TakeDamage` seam, the summon trigger |
 | [LookBack.md](LookBack.md) | Hold-Q glance behind, and how it avoids inverting movement |
 | [Controls.md](Controls.md) | Key legend + the `Controls.luau` registration convention |
