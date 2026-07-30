@@ -95,15 +95,24 @@ at `Start()` and again on every `MazeGeneration` (the Vault lives inside
 `workspace.Maze`, so `ClearAllChildren()` destroys it every rebuild, same
 footgun as the old `ExitGate`).
 
-On `Vault.Touched`, guarded by `workspace.VaultTaken` (checked and set
-synchronously before any yield, so a multi-part touch can't double-grant):
+The Vault is a `Model` (a core-and-cage artifact, or the user's art from
+`ServerStorage.MazeModels.Vault`), so the touch goes through the same
+`attachGrab` the salvage pieces use: `Touched` on **every** `BasePart` inside it
+behind one shared flag. Binding the container alone would never fire, and binding
+each part independently would let a player brushing two fins in the same frame
+trip it twice.
+
+On a grab, guarded by `workspace.VaultTaken` (checked and set synchronously
+before any yield):
 
 1. `workspace:SetAttribute("VaultTaken", true)`.
 2. `player:SetAttribute("HasVault", true)`.
 3. `workspace:SetAttribute("AlarmActive", true)`.
-4. The Vault part goes dark and inert (`Slate` material, near-black) so it
-   reads as emptied. No further `Touched` behaviour on that instance — the
-   next rebuild rebinds a fresh one.
+4. `emptyVault` strips it to a husk — every part `Slate` and near-black, lights
+   destroyed, and the `AlwaysOnTop` outline dulled to grey so it stops
+   advertising itself as the objective from across the maze. The objective has
+   moved: the compass now points at whoever is carrying it. No further behaviour
+   on that instance — the next rebuild rebinds a fresh one.
 
 **The alarm reuses the existing gunshot summon — no new hunter pathing.**
 `HunterService` already beelines every hunter within `SUMMON_RADIUS` to
@@ -245,8 +254,17 @@ each kind upgrades independently the moment its model appears.
 | Child of `SalvageModels` | Used for | Fallback |
 | ------------------------ | -------- | -------- |
 | `Backpack` | District 3 salvage (outer, value 10) | green neon block |
-| `DuffelBag` | District 2 salvage (mid, value 30) | cyan neon block |
+| `Backpack` | District 2 salvage (mid, value 30) | cyan neon block |
 | `Briefcase` | District 1 salvage (inner, value 75) | violet neon block |
+
+The `DuffelBag` moved to the hub as the Vault
+(`ServerStorage.MazeModels.Vault` — see [Maze.md](Maze.md)), leaving two
+silhouettes for three tiers. The repeat sits on the two **cheap** tiers
+deliberately: colour is the primary tier signal, and the find worth crossing a
+district for is the one that most needs to be unmistakable, so the inner tier
+keeps the sealed case to itself while outer and mid share the pack and differ
+only by glow. Add a fourth model and give district 2 its own `model` name to
+split them properly.
 
 **Three models, and only three.** Death spills (`dropHaul`) and the dropped
 vault (`dropVault`) deliberately stay code-built blocks — a spill must not share

@@ -24,11 +24,20 @@ return {
 	-- signal this is supposed to carry. Green -> cyan -> violet all survive Neon
 	-- and stay distinct from the amber of a death spill (DROP_COLOR below).
 	--
-	-- `model` names a child of ServerStorage.SalvageModels. Cheapest to richest:
-	-- a tactical backpack, a duffel, a sealed briefcase.
+	-- `model` names a child of ServerStorage.SalvageModels. The DuffelBag moved
+	-- to the hub as the Vault (ServerStorage.MazeModels.Vault), so the maze is
+	-- down to two silhouettes for three tiers.
+	--
+	-- The repeat lands on the two CHEAP tiers, not the rich one: colour is the
+	-- primary tier signal (that's why it has to survive Neon — see above), and
+	-- the find worth crossing a district for is the one that most needs to be
+	-- unmistakable at a glance. So outer and mid share the pack and differ only
+	-- by glow, while the inner tier keeps the sealed case to itself. Drop a
+	-- fourth model into SalvageModels and give district 2 its own name to split
+	-- them properly.
 	PER_DISTRICT = {
 		[3] = { count = 10, value = 10, model = "Backpack", color = Color3.fromRGB(90, 200, 110) },
-		[2] = { count = 8, value = 30, model = "DuffelBag", color = Color3.fromRGB(60, 170, 235) },
+		[2] = { count = 8, value = 30, model = "Backpack", color = Color3.fromRGB(60, 170, 235) },
 		[1] = { count = 6, value = 75, model = "Briefcase", color = Color3.fromRGB(190, 90, 245) },
 	},
 	PIECE_SIZE = 1.5, -- fallback block edge, studs

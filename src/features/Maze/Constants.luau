@@ -7,6 +7,14 @@
 
 return {
 	SEED = 1001, -- season seed; changing it must change the whole maze
+
+	-- Optional real art for the Vault, placed by the user in Studio as
+	-- ServerStorage.MazeModels.Vault. Missing => MazeService builds its own
+	-- artifact (glowing core in a broken cage), so the centre reads as a prize
+	-- with zero assets. One folder per feature, matching PickupModels and
+	-- SalvageModels.
+	MODELS_FOLDER = "MazeModels", -- under ServerStorage
+	VAULT_MODEL = "Vault",
 	GRID = 8, -- 8x8 cells for the slice
 	TILE_SIZE = 50, -- studs, square footprint
 	WALL_HEIGHT = 36, -- street maze walls (3 storeys)

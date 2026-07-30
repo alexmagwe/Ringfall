@@ -16,6 +16,7 @@
 -- .server.luau => splitter routes to ServerScriptService.Features.Maze.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Constants = require(ReplicatedStorage.Features.Maze.Constants)
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
@@ -89,6 +90,23 @@ local STAGING_FLOOR_OVERLAP = 8
 local STAGING_FLOOR_DROP = 0.1
 local VAULT_COLOR = Color3.fromRGB(40, 40, 46)
 local VAULT_OUTLINE_COLOR = Color3.fromRGB(255, 195, 60)
+-- The artifact's proportions. It is deliberately NOT one big glowing block:
+-- a small bright core inside a broken dark cage reads as "a container with
+-- something valuable in it", where a solid lit cube read as a placeholder.
+local VAULT_Y_OFFSET = 6 -- above FLOOR_Y; chest height, so it's an object not decor
+local VAULT_CORE_SIZE = 3.2
+local VAULT_FIN_COUNT = 4
+local VAULT_FIN_SIZE = Vector3.new(0.6, 6.4, 2.6)
+local VAULT_FIN_RADIUS = 2.4 -- gaps between fins are what let the core glow out
+local VAULT_SHARD_COUNT = 3
+local VAULT_SHARD_SIZE = 1.1
+local VAULT_SHARD_RADIUS = 4.8
+-- User art is fitted to this on its longest axis. Toolbox props are authored at
+-- wildly different scales — a briefcase modelled for a character's hand is a
+-- couple of studs and reads as litter on the dais, which is the opposite of "the
+-- thing you crossed three districts for". Fitting to a target makes every
+-- candidate model the same size on screen regardless of how its author built it.
+local VAULT_TARGET_SIZE = 6
 
 local TWO_PI = math.pi * 2
 
@@ -388,6 +406,180 @@ local function buildStaging(theta: number): CFrame
 	return CFrame.lookAt(spawnPos, Vector3.new(0, spawnPos.Y, 0))
 end
 
+-- The Vault's optional art: ServerStorage.MazeModels.Vault, if the user placed
+-- one. Accepts anything that is or contains a BasePart (Model, MeshPart, Tool,
+-- Accessory — whatever the Toolbox hands over), because a class whitelist
+-- rejects perfectly usable art and the resulting silent fallback is
+-- indistinguishable from "I never added it". Warns instead.
+local function vaultTemplate(): Instance?
+	local folder = ServerStorage:FindFirstChild(Constants.MODELS_FOLDER)
+	if folder == nil then
+		return nil -- no art placed; the built-in artifact is the expected path
+	end
+	local template = folder:FindFirstChild(Constants.VAULT_MODEL)
+	if template == nil then
+		-- The folder exists, so this is a half-finished setup rather than the
+		-- deliberate no-art default. Say so: an empty MazeModels folder otherwise
+		-- looks identical to working art that quietly fell back.
+		warn(
+			`[Maze] ServerStorage.{Constants.MODELS_FOLDER} has no "{Constants.VAULT_MODEL}" child; `
+				.. `using the built-in artifact`
+		)
+		return nil
+	end
+	if not (template:IsA("BasePart") or template:FindFirstChildWhichIsA("BasePart", true)) then
+		warn(
+			`[Maze] ServerStorage.{Constants.MODELS_FOLDER}.{Constants.VAULT_MODEL} `
+				.. `has no BasePart to render; using the built-in artifact`
+		)
+		return nil
+	end
+	return template
+end
+
+-- Lights the Vault and makes it visible through the ring walls, so the centre
+-- reads as *the* destination from anywhere in the maze. Applied to whichever
+-- shape the Vault ended up being.
+local function dressVault(model: Model, lightHost: BasePart?)
+	if lightHost then
+		local light = Instance.new("PointLight")
+		light.Color = VAULT_OUTLINE_COLOR
+		light.Range = 60
+		light.Brightness = 4
+		light.Shadows = true
+		light.Parent = lightHost
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.FillTransparency = 1
+	highlight.OutlineColor = VAULT_OUTLINE_COLOR
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = model
+end
+
+-- The built-in artifact: a small bright core suspended inside a ring of dark
+-- fins, with a few chunks orbiting further out. This replaced a single 7-stud
+-- Neon cube — which was lit and centred and still read as a placeholder,
+-- because one solid glowing block has no internal detail to catch the eye.
+-- Breaking it into core + cage + debris gives the light something to slice
+-- through as it turns (VaultController spins it client-side).
+local function buildVaultArtifact(parent: Instance): Model
+	local model = Instance.new("Model")
+	model.Name = "Vault"
+
+	local centre = Vector3.new(0, FLOOR_Y + VAULT_Y_OFFSET, 0)
+
+	local core = Instance.new("Part")
+	core.Name = "Core"
+	core.Shape = Enum.PartType.Ball
+	core.Size = Vector3.new(VAULT_CORE_SIZE, VAULT_CORE_SIZE, VAULT_CORE_SIZE)
+	core.CFrame = CFrame.new(centre)
+	core.Anchored = true
+	core.CanCollide = false
+	core.CanTouch = true
+	core.Material = Enum.Material.Neon
+	core.Color = VAULT_OUTLINE_COLOR
+	core.Parent = model
+	-- PrimaryPart so VaultController can PivotTo the whole thing about the core.
+	model.PrimaryPart = core
+
+	-- Cage: dark fins standing around the core with deliberate gaps. A closed
+	-- shell would just be the black box again.
+	for i = 0, VAULT_FIN_COUNT - 1 do
+		local angle = (i / VAULT_FIN_COUNT) * TWO_PI
+		local fin = Instance.new("Part")
+		fin.Name = "Fin"
+		fin.Size = VAULT_FIN_SIZE
+		fin.CFrame = CFrame.new(centre) * CFrame.Angles(0, angle, 0) * CFrame.new(VAULT_FIN_RADIUS, 0, 0)
+		fin.Anchored = true
+		fin.CanCollide = false
+		fin.CanTouch = true
+		fin.Material = Enum.Material.Metal
+		fin.Color = VAULT_COLOR
+		fin.Parent = model
+	end
+
+	-- Orbiting debris at mixed heights: cheap way to make the centre read as
+	-- active rather than as a prop someone left there.
+	for i = 0, VAULT_SHARD_COUNT - 1 do
+		local angle = (i / VAULT_SHARD_COUNT) * TWO_PI
+		local shard = Instance.new("Part")
+		shard.Name = "Shard"
+		shard.Size = Vector3.new(VAULT_SHARD_SIZE, VAULT_SHARD_SIZE, VAULT_SHARD_SIZE)
+		shard.CFrame = CFrame.new(centre + Vector3.new(0, (i - 1) * 1.6, 0))
+			* CFrame.Angles(0, angle, 0)
+			* CFrame.new(VAULT_SHARD_RADIUS, 0, 0)
+			* CFrame.Angles(math.rad(25), math.rad(35), 0)
+		shard.Anchored = true
+		shard.CanCollide = false
+		shard.CanTouch = true
+		shard.Material = Enum.Material.Metal
+		shard.Color = VAULT_COLOR
+		shard.Parent = model
+	end
+
+	dressVault(model, core)
+	model.Parent = parent
+	return model
+end
+
+-- Builds the Vault: the user's art if they placed any, else the built-in
+-- artifact. Always ends up as a Model named "Vault" at the hub centre, so
+-- SalvageService's binding doesn't care which branch ran.
+local function buildVault(parent: Instance): Model
+	local template = vaultTemplate()
+	if template == nil then
+		return buildVaultArtifact(parent)
+	end
+
+	local clone = template:Clone()
+	local model: Model
+	if clone:IsA("Model") then
+		model = clone
+	else
+		model = Instance.new("Model")
+		clone.Parent = model
+	end
+	model.Name = "Vault"
+
+	-- Strip scripts: a free model can ship server Scripts that would run the
+	-- instant it enters the world. The Vault is art plus a touch target.
+	for _, d in model:GetDescendants() do
+		if d:IsA("LuaSourceContainer") then
+			d:Destroy()
+		end
+	end
+
+	-- Anchored and non-colliding: it floats, and walking into the prize must
+	-- never be able to shove it off the dais or block the hub.
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+			d.CanTouch = true
+			d.Massless = true
+		end
+	end
+
+	-- Drop any PrimaryPart the Toolbox author set. Both ScaleTo and PivotTo work
+	-- about the model's pivot, and an off-centre PrimaryPart makes the Vault swing
+	-- through an arc instead of turning in place once VaultController spins it.
+	-- With no PrimaryPart the pivot is the bounding-box centre, which is what
+	-- "floating at the hub, rotating" needs.
+	model.PrimaryPart = nil
+
+	local extents = model:GetExtentsSize()
+	local longest = math.max(extents.X, extents.Y, extents.Z)
+	if longest > 0.01 then
+		model:ScaleTo(VAULT_TARGET_SIZE / longest)
+	end
+
+	model:PivotTo(CFrame.new(0, FLOOR_Y + VAULT_Y_OFFSET, 0))
+	dressVault(model, model:FindFirstChildWhichIsA("BasePart", true))
+	model.Parent = parent
+	return model
+end
+
 -- A lit archway marking the single opening in a district boundary: two
 -- vertical pillars flanking the passage plus a lintel across the top. Decor
 -- and navigation only (compass targeting, checkpoint respawn) — no Touched
@@ -637,35 +829,10 @@ function MazeService.rebuild(seed: number)
 	dais.Color = VAULT_COLOR
 	dais.Parent = mazeFolder
 
-	-- The artifact itself: a glowing container floating at chest height above
-	-- the dais. It was previously a flat disc lying ON the floor, which read as
-	-- decoration rather than a prize — players walked to the centre and saw
-	-- nothing to take. It needs to be an OBJECT, lit, at eye level.
-	local vault = Instance.new("Part")
-	vault.Name = "Vault"
-	vault.Size = Vector3.new(7, 7, 7)
-	vault.CFrame = CFrame.new(0, FLOOR_Y + 6, 0) * CFrame.Angles(0, math.rad(35), math.rad(15))
-	vault.Anchored = true
-	vault.CanCollide = false
-	vault.CanTouch = true
-	vault.Material = Enum.Material.Neon
-	vault.Color = VAULT_OUTLINE_COLOR
-	vault.Parent = mazeFolder
-
-	local vaultLight = Instance.new("PointLight")
-	vaultLight.Color = VAULT_OUTLINE_COLOR
-	vaultLight.Range = 60
-	vaultLight.Brightness = 4
-	vaultLight.Shadows = true
-	vaultLight.Parent = vault
-
-	-- Visible through the ring walls, so the centre reads as the destination
-	-- from anywhere in the maze.
-	local vaultHighlight = Instance.new("Highlight")
-	vaultHighlight.FillTransparency = 1
-	vaultHighlight.OutlineColor = VAULT_OUTLINE_COLOR
-	vaultHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	vaultHighlight.Parent = vault
+	-- The artifact itself, floating at chest height above the dais. Always a
+	-- Model named "Vault" (SalvageService binds Touched on every BasePart inside
+	-- it), so the user's art and the built-in fallback are interchangeable.
+	buildVault(mazeFolder)
 
 	-- Validate: the whole maze is connected (so any drop-in cell reaches the hub).
 	local reached = reachFrom(passages, 0, 0)

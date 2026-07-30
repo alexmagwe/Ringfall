@@ -264,25 +264,48 @@ end
 -- Binds Vault.Touched. Called once at Start and again on every
 -- MazeGeneration, because the Vault lives in workspace.Maze and
 -- `mazeFolder:ClearAllChildren()` destroys it every rebuild.
+-- Strips the Vault back to a spent husk: every part dark and matte, its light
+-- gone, its always-on-top outline dulled so it stops advertising itself as the
+-- objective from across the maze. The objective has moved — the compass now
+-- points at whoever is carrying it (see CompassController).
+local function emptyVault(vault: Instance)
+	for _, d in vault:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Material = Enum.Material.Slate
+			d.Color = Color3.fromRGB(20, 20, 22)
+		elseif d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+			d:Destroy()
+		elseif d:IsA("Highlight") then
+			d.OutlineColor = Color3.fromRGB(70, 70, 76)
+		end
+	end
+	if vault:IsA("BasePart") then
+		vault.Material = Enum.Material.Slate
+		vault.Color = Color3.fromRGB(20, 20, 22)
+	end
+end
+
+-- Binds the Vault's one interaction. Called once at Start and again on every
+-- MazeGeneration, because the Vault lives in workspace.Maze and
+-- `mazeFolder:ClearAllChildren()` destroys it every rebuild.
+--
+-- The Vault is a Model (a core-and-cage artifact, or the user's art from
+-- ServerStorage.MazeModels.Vault — see MazeService.buildVault), so the touch
+-- binds to every BasePart inside it behind one shared flag. Binding only the
+-- container would never fire, and binding each part independently would let a
+-- player who brushes two fins at once trip it twice.
 local function bindVault()
 	local mazeFolder = workspace:WaitForChild("Maze")
-	local vault = mazeFolder:WaitForChild("Vault") :: BasePart
+	local vault = mazeFolder:WaitForChild("Vault")
 
-	vault.Touched:Connect(function(hit: BasePart)
+	attachGrab(vault, function(player: Player)
 		if workspace:GetAttribute("VaultTaken") then
-			return
-		end
-		local player = playerFromPart(hit)
-		if not player then
 			return
 		end
 		workspace:SetAttribute("VaultTaken", true)
 		player:SetAttribute("HasVault", true)
 		workspace:SetAttribute("AlarmActive", true)
-		-- Reads as emptied: dark and inert. No more Touched behaviour on this
-		-- part until the next rebuild rebinds a fresh one.
-		vault.Material = Enum.Material.Slate
-		vault.Color = Color3.fromRGB(20, 20, 22)
+		emptyVault(vault)
 	end)
 end
 

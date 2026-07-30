@@ -203,12 +203,39 @@ only spawn point, every time.
 
 ## The Vault
 
-The centre hub part, previously named `ExitGate` (the old per-player win
-trigger) and now named **`Vault`**: same size and position
-(`RADII[1] * 1.4` diameter, centred), but reskinned to read as a
-container — dark `Metal` material, a gold `Highlight` outline, no light
-emission (greybox; see [Salvage.md](Salvage.md) for its Touched behaviour and
-the alarm it trips). `MazeService` builds it with **no behaviour** —
+The prize at the centre hub, previously named `ExitGate` (the old per-player win
+trigger) and now named **`Vault`**. It is always a **`Model`** floating
+`VAULT_Y_OFFSET` (6) studs above a decorative `VaultDais`, built one of two ways
+by `buildVault`:
+
+- **The user's art**, if `ServerStorage.MazeModels.Vault` exists. Anything that
+  is or contains a `BasePart` works; scripts are stripped and every part is
+  forced `Anchored` / `CanCollide = false` / `CanTouch = true` / `Massless`. The
+  check is not a class whitelist, because rejecting usable art produces a silent
+  fallback indistinguishable from "I never added it" — `vaultTemplate` warns
+  instead. Two normalisations then make any Toolbox prop behave:
+  - **`PrimaryPart` is cleared.** `ScaleTo` and `PivotTo` both work about the
+    model's pivot, so an off-centre `PrimaryPart` would make the Vault swing
+    through an arc instead of turning in place once it spins. With none set the
+    pivot is the bounding-box centre.
+  - **Scaled to `VAULT_TARGET_SIZE` (6) on its longest axis.** Toolbox props are
+    authored at wildly different scales; a briefcase built for a character's
+    hand is a couple of studs and reads as litter on the dais.
+- **The built-in artifact** otherwise: a small bright `Neon` core inside a ring
+  of `VAULT_FIN_COUNT` dark metal fins, with `VAULT_SHARD_COUNT` chunks orbiting
+  further out at mixed heights. This replaced a single 7-stud Neon cube which
+  was lit, centred, and *still* read as a placeholder — one solid glowing block
+  has no internal detail for the eye to catch. Core + cage + debris gives the
+  light something to slice through as it turns.
+
+Either way `dressVault` adds the `PointLight` and the `AlwaysOnTop` gold
+`Highlight`, so the centre reads as *the* destination through the ring walls
+from anywhere in the maze.
+
+Motion is client-side (`Salvage/VaultController.client.luau`): a slow spin plus a
+small bob, rebound on `MazeGeneration`. See [Salvage.md](Salvage.md) for its
+Touched behaviour and the alarm it trips. `MazeService` builds it with **no
+behaviour** —
 `SalvageService` binds `Touched` separately (see
 [Salvage.md](Salvage.md#the-vault-and-the-alarm)), the same split
 `MazeService`/`EscapeService` already used for the old `ExitGate`.
