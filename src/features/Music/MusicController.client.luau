@@ -5,14 +5,15 @@
 --
 -- Reads the SAME attributes the gameplay already publishes, so this feature
 -- imports nothing from Maze, Salvage or Hunter:
---   workspace.RoundState   "Staging" | "Active"   (EscapeService)
---   workspace.AlarmActive  bool                   (SalvageService)
---   player.HasVault        bool                   (SalvageService)
+--   workspace.RoundState   "Staging" | "Active"   (EscapeService)  -> which loop
+--   workspace.AlarmActive  bool                   (SalvageService) -> siren sting
+--
+-- Two different things: RoundState picks the looping bed, AlarmActive fires a
+-- one-shot over the top of it. The alarm is an EVENT, not a phase.
 --
 -- Auto-loaded: name ends in `Controller`, so the client entry Start()s it.
 -- .client.luau => splitter routes to StarterPlayerScripts.Features.Music.
 
-local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -25,24 +26,42 @@ local Constants = require(ReplicatedStorage.Features.Music.Constants)
 
 local MusicController = {}
 
--- Which cue the current world state calls for.
-local function currentCue(player: Player): string
+-- Which looping bed the current world state calls for. The alarm is deliberately
+-- absent: it's a sting layered over whichever of these is running, so taking the
+-- vault no longer swaps the bed out from under the return trip.
+local function currentCue(): string
 	if workspace:GetAttribute("RoundState") ~= "Active" then
 		return "STAGING"
-	end
-	-- Either the alarm is up globally, or this player is the one carrying it.
-	if workspace:GetAttribute("AlarmActive") == true or player:GetAttribute("HasVault") == true then
-		return "ALARM"
 	end
 	return "DESCENT"
 end
 
 function MusicController.Start()
-	local player = Players.LocalPlayer
 	local playing: string? = nil
 
+	-- Siren over the top of the running loop, cut to ALARM_STING_SECONDS with a
+	-- short fade — the clip is far longer than the moment it scores, and a hard
+	-- cut on a sustained siren clicks.
+	local function playAlarmSting()
+		local track = Constants.ALARM
+		if track.id == "" then
+			return
+		end
+		local sound = Boil.audio.playSoundId(track.id, track.volume)
+		local holdFor = math.max(Constants.ALARM_STING_SECONDS - Constants.ALARM_STING_FADE, 0)
+		task.delay(holdFor, function()
+			if not sound.IsPlaying then
+				return -- already ended on its own and cleaned itself up
+			end
+			TweenService:Create(sound, TweenInfo.new(Constants.ALARM_STING_FADE), { Volume = 0 }):Play()
+			task.delay(Constants.ALARM_STING_FADE, function()
+				sound:Destroy()
+			end)
+		end)
+	end
+
 	local function apply()
-		local cue = currentCue(player)
+		local cue = currentCue()
 		if cue == playing then
 			return
 		end
@@ -69,18 +88,23 @@ function MusicController.Start()
 		if not sound then
 			return
 		end
-		-- The alarm cuts in hard on purpose; everything else eases up.
-		if cue == "ALARM" then
-			sound.Volume = track.volume
-			return
-		end
 		sound.Volume = 0
 		TweenService:Create(sound, TweenInfo.new(Constants.FADE_TIME), { Volume = track.volume }):Play()
 	end
 
 	workspace:GetAttributeChangedSignal("RoundState"):Connect(apply)
-	workspace:GetAttributeChangedSignal("AlarmActive"):Connect(apply)
-	player:GetAttributeChangedSignal("HasVault"):Connect(apply)
+
+	-- Fires for EVERY player, not just the carrier: the vault going is a
+	-- maze-wide event (every compass swings, every hunter turns), so everyone
+	-- should hear it. Guarded on the value because the signal also fires when
+	-- MazeService clears the attribute on rebuild.
+	workspace:GetAttributeChangedSignal("AlarmActive"):Connect(function()
+		if workspace:GetAttribute("AlarmActive") ~= true then
+			return
+		end
+		playAlarmSting()
+	end)
+
 	apply()
 end
 

@@ -88,7 +88,12 @@ end
 -- Play an arbitrary one-shot by rbxassetid. Use this for sounds outside the
 -- registry (e.g. user-uploaded picks, asset-id from data). Prefer `playUI` for
 -- anything that's stable enough to live in the registry.
-function Audio.playSoundId(id: string, volume: number?)
+--
+-- Returns the Sound so a caller can fade or cut it short — needed when the clip
+-- is longer than the moment it's scoring (a 33s siren used as a 3s sting).
+-- Ignoring the return keeps the old fire-and-forget behaviour: it cleans itself
+-- up on Ended, with a 15s backstop for assets that never fire it.
+function Audio.playSoundId(id: string, volume: number?): Sound
 	local s = Instance.new("Sound")
 	s.SoundId = id
 	s.Volume = volume or DEFAULT_UI_VOLUME
@@ -101,6 +106,7 @@ function Audio.playSoundId(id: string, volume: number?)
 			s:Destroy()
 		end
 	end)
+	return s
 end
 
 local currentMusic: Sound? = nil

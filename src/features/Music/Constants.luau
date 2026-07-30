@@ -29,10 +29,18 @@ return {
 	DESCENT = { id = "rbxassetid://105135449947797", volume = 0.12 },
 
 	-- Vault taken: every hunter turns and the goal flips from "go in" to "get
-	-- out". Driving and relentless. This is the round's payoff moment and it
-	-- currently happens in near-silence.
-	-- 33s; loops a couple of times across a return trip, which is fine.
+	-- out". A short SIREN STING over whatever is already playing — NOT a cue of
+	-- its own. It used to be a looping track that replaced the descent bed for
+	-- the entire return trip, which made taking the vault read as a new phase
+	-- rather than as an event, and buried the sparse descent mix the hunter drone
+	-- needs to cut through. Three seconds, then the previous loop carries on
+	-- underneath, uninterrupted.
+	-- The clip is 33s, hence ALARM_STING_SECONDS below — it is cut short, not
+	-- played out. Swap in a genuinely short siren and the wiring is unchanged.
 	ALARM = { id = "rbxassetid://7084812679", volume = 0.28 },
+	ALARM_STING_SECONDS = 3,
+	-- Tail of the sting spent fading, so cutting a 33s clip at 3s doesn't click.
+	ALARM_STING_FADE = 0.5,
 
 	-- Round over. A short resolving sting (~4-5s), NOT a loop.
 	-- 3.8s — right in the 4-5s window, and short enough not to smear into the
