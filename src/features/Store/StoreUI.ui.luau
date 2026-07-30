@@ -33,15 +33,12 @@ local DESC_COLOR = Color3.fromRGB(186, 196, 208)
 local PRICE_COLOR = Color3.fromRGB(255, 224, 140)
 local LOCKED_COLOR = Color3.fromRGB(170, 180, 195)
 local NOTICE_COLOR = Color3.fromRGB(255, 140, 140)
-local CLOSED_COLOR = Color3.fromRGB(255, 190, 120)
 
 export type Props = {
 	items: { Registry.Item },
 	cash: number,
 	unlocked: { [string]: boolean },
 	rented: { [string]: boolean },
-	-- Purchases are staging-only; false greys every button out.
-	canBuy: boolean,
 	-- Transient rejection message from the server, or nil.
 	notice: string?,
 	onUnlock: (id: string) -> (),
@@ -88,7 +85,7 @@ local function itemRow(props: Props, def: Registry.Item, layoutOrder: number): a
 		end
 	end
 
-	local disabled = inLoadout or not props.canBuy or props.cash < cost
+	local disabled = inLoadout or props.cash < cost
 
 	return React.createElement(ui.Panel, {
 		size = UDim2.new(1, 0, 0, ROW_HEIGHT),
@@ -158,19 +155,6 @@ return function(props: Props)
 			layoutOrder = 1,
 		}),
 	}
-
-	-- Two different reasons a button might be dead. Say which, rather than
-	-- leaving the player clicking a greyed-out box.
-	if not props.canBuy then
-		children.Closed = React.createElement(ui.Text, {
-			text = "The shelf closes when the doors open.",
-			textSize = DESC_TEXT_SIZE,
-			color = CLOSED_COLOR,
-			xAlignment = Enum.TextXAlignment.Left,
-			size = UDim2.new(1, 0, 0, DESC_TEXT_SIZE + 6),
-			layoutOrder = 2,
-		})
-	end
 
 	if props.notice ~= nil then
 		children.Notice = React.createElement(ui.Text, {

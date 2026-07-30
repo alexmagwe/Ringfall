@@ -4,7 +4,6 @@
 --   • Registry.Changed             — new items appear without a remount
 --   • useReplica(…, "Ringfall")    — Cash + Unlocked (permanent, persisted)
 --   • the StoreRented attribute    — what's already in this round's loadout
---   • the RoundState attribute     — purchases are staging-only
 --   • StoreController.Rejected     — the server's reason a buy bounced
 --
 -- Mounted as a root by StorePresentation.client.luau. Dumb by the headless-core
@@ -40,22 +39,6 @@ local function useCatalogue(): { Registry.Item }
 		end
 	end, {})
 	return Registry.list()
-end
-
--- Reads a workspace attribute reactively. Used for RoundState, which decides
--- whether the shelf is open for business.
-local function useWorkspaceAttribute(name: string): any
-	local value, setValue = React.useState(workspace:GetAttribute(name))
-	React.useEffect(function()
-		local conn = workspace:GetAttributeChangedSignal(name):Connect(function()
-			setValue(workspace:GetAttribute(name))
-		end)
-		setValue(workspace:GetAttribute(name))
-		return function()
-			conn:Disconnect()
-		end
-	end, { name } :: { any })
-	return value
 end
 
 -- The comma-joined StoreRented attribute, exploded into a set. Server-written
@@ -115,7 +98,6 @@ return function()
 
 	local items = useCatalogue()
 	local rented = useRentedSet()
-	local roundState = useWorkspaceAttribute("RoundState")
 	local profile = Boil.useReplica(PlayerDataController, Constants.PROFILE_KEY) or {}
 
 	-- Every hook above runs unconditionally; the window is simply not drawn when
@@ -129,7 +111,6 @@ return function()
 		cash = if typeof(profile.Cash) == "number" then profile.Cash else 0,
 		unlocked = if typeof(profile.Unlocked) == "table" then profile.Unlocked else {},
 		rented = rented,
-		canBuy = roundState == "Staging",
 		notice = notice,
 		onUnlock = StoreController.unlock,
 		onRent = StoreController.rent,

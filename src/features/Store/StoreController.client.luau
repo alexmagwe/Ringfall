@@ -63,13 +63,10 @@ function StoreController.Start()
 		StoreController.Rejected:Fire(payload.id, payload.reason)
 	end)
 
-	-- The shelf is a staging-room fixture. Once the doors open it can't stay on
-	-- screen — you'd be running the maze behind a centred window.
-	workspace:GetAttributeChangedSignal("RoundState"):Connect(function()
-		if workspace:GetAttribute("RoundState") ~= "Staging" then
-			StoreController.setOpen(false)
-		end
-	end)
+	-- No round-state close: the shelf trades mid-run too. Walking away from the
+	-- terminal is what closes it (StoreWorldInteraction watches the distance),
+	-- which is the right signal either way — you can't be running the maze
+	-- behind a centred window if the window shuts when you leave the room.
 end
 
 return StoreController

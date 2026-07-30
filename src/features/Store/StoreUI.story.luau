@@ -69,7 +69,6 @@ return {
 		cash = UILabs.Slider(320, 0, 3000, 10),
 		floodlightUnlocked = false,
 		sidearmRented = false,
-		inStaging = true,
 		showRejection = false,
 	},
 
@@ -80,7 +79,6 @@ return {
 			cash = c.cash,
 			unlocked = { ["flashlight.floodlight"] = c.floodlightUnlocked },
 			rented = { ["gun.sidearm"] = c.sidearmRented },
-			canBuy = c.inStaging,
 			notice = if c.showRejection then "Not enough cash" else nil,
 			onUnlock = noop,
 			onRent = noop,

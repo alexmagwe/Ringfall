@@ -24,10 +24,30 @@ going worthless once you own everything, because rent never stops.
 2. Staging begins. The terminal in the staging room opens the shelf.
 3. You unlock what you can afford, and rent what you want to take in. Rented
    effects apply immediately as per-run attributes.
-4. The doors open. `RoundState` flips to `Active` and the shelf closes — the
-   window force-closes on the client and the server rejects any late buy.
+4. The doors open. **The shelf keeps trading** — see below.
 5. Caught in the maze → your rented kit is stripped along with your haul. Your
    cash and unlocks are untouched.
+
+### Why trading isn't restricted to Staging
+
+It was, briefly, on the theory that buying mid-run would let a cornered player
+conjure a gun out of nothing. Two facts make that not a risk, and the
+restriction cost more than it bought:
+
+- **You can't earn mid-run.** Haul only becomes cash at round end, so the moment
+  the doors open your budget for that round is fixed. Nothing you find in the
+  maze can be spent in it.
+- **The terminal is in the staging room.** Re-kitting means running back out
+  through three districts and in again. A cornered player is precisely the one
+  player who can't reach it — the geography enforces the rule the check was
+  trying to.
+
+Against that, a 15-second countdown is not enough time to spawn, find the
+terminal, read four items and decide, so the staging-only rule mostly meant
+new players never used the shelf at all.
+
+The shelf still closes when you walk away from the terminal (`CLOSE_RANGE`),
+which is what stops a centred window following you into the maze.
 
 ## The catalogue is not the Store's
 
@@ -101,7 +121,6 @@ moves — the client's packet carries only an id and a rent/unlock flag.
 Rejections, each sent back as a `BuyRejected` reason the shelf displays:
 
 - id absent, empty, or over `MAX_ITEM_ID_LENGTH`, or not in the registry → dropped silently (and warned server-side)
-- `RoundState ~= "Staging"` → *"The shelf is closed once the doors open"*
 - renting an item you haven't unlocked → *"Not unlocked"*
 - renting a non-`repeatable` item you already hold → *"Already in your loadout"*
 - unlocking something already unlocked, or with `unlockCost` 0 → *"Already unlocked"* / *"Already on the shelf"*
@@ -118,7 +137,7 @@ you from starting a round.
 | `Ringfall.Unlocked[id]` | profile | Permanent access. Only `StoreService` writes it. |
 | `Ringfall.BestHaul` | profile | Biggest single-round haul. Stat only. |
 | `StoreRented` (player attr) | `StoreService` | Comma-joined ids rented this round. Replicates for free; the shelf reads it to grey out a second buy. |
-| `RoundState` (workspace attr) | `EscapeService` | `"Staging"` is the only state in which the shelf trades. |
+| `RoundState` (workspace attr) | `EscapeService` | Entering `"Staging"` is when `StoreService` clears the round's rented bookkeeping. It does **not** gate trading. |
 | `Caught` (player attr) | `HunterService` | `StoreService` watches it and strips rented kit. This is why Hunter doesn't have to know the shelf exists. |
 
 ## The terminal

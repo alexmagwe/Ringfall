@@ -289,14 +289,12 @@ function StoreService.Start()
 			return
 		end
 
-		-- Staging only. Buying mid-run would let a cornered player conjure a gun
-		-- out of nothing, which is exactly the decision the maze is supposed to
-		-- have already taken away from them.
-		if workspace:GetAttribute("RoundState") ~= "Staging" then
-			reject(player, id, "The shelf is closed once the doors open")
-			return
-		end
-
+		-- The shelf trades in every round state, not just Staging. Two things
+		-- keep that from being "conjure a gun when cornered": you cannot EARN
+		-- mid-run (haul only becomes cash at round end), so the round's budget is
+		-- fixed the moment the doors open; and the terminal is in the staging
+		-- room, so re-kitting costs a full trip back out through three districts.
+		-- A cornered player is the one player who can't reach it.
 		if payload.rent then
 			rentItem(player, def)
 		else
