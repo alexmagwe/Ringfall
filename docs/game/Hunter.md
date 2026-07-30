@@ -71,7 +71,7 @@ from a level camera, which is the angle that matters in play.
 
 ## Behaviour
 
-`HUNTER_COUNT = 3` hunters spawn once `workspace.MazeReady` is set, each at a
+`HUNTER_COUNT = 6` hunters spawn once `workspace.MazeReady` is set, each at a
 `farSpawn` point well away from the player spawn.
 
 Each runs a loop every `REPATH` (0.7s) picking one of three states:
@@ -82,6 +82,38 @@ Each runs a loop every `REPATH` (0.7s) picking one of three states:
 - **Search** — lock lost. Walks to the last cell the player was sensed in at
   `BASE_SPEED`, then gives up.
 - **Wander** — no lead. Picks random maze cells.
+
+### The pack must not move as one animal
+
+`MazeNav.nextStep` is a plain BFS, so **identical start cell + identical goal
+cell = identical first step**. Six hunters running the same decision loop against
+the same target therefore picked the same route every tick and travelled
+nose-to-tail down one corridor — six creatures reading as one. Four things break
+that symmetry, none of which touches `HUNTER_COUNT`, `BASE_SPEED` or `MAX_SPEED`:
+
+| Mechanism | Constant | What it fixes |
+| --------- | -------- | ------------- |
+| **Flanking** | `FLANK_RANGE` (60) | Beyond 60 studs a chaser paths to a *different open neighbour* of the target's cell — `chaseCell` picks it by the hunter's fixed `flankSeed`, so it keeps claiming the same approach instead of dithering in a doorway. The pack converges from several corridors. Inside 60 studs everyone commits to the target's own cell, because the catch needs `CATCH_DIST` (7) and a hunter loitering one cell away never gets there. |
+| **Separation** | `SEPARATION_DIST` (12), `SEPARATION_STRENGTH` (8) | `spread` offsets the `MoveTo` goal away from any peer within 12 studs, so they fan across a corridor's width rather than stacking. |
+| **Repath jitter** | `REPATH_JITTER` (0.45) | `nextRepath` re-rolls the tick interval **every tick**, not once per hunter — a fixed per-hunter offset lets two hunters with near-identical intervals drift back into lockstep. |
+| **Speed variance** | `SPEED_VARIANCE` (0.12) | A fixed ±12% per hunter, applied by `setSpeed` on top of whatever the current state chose, so a group chasing one target strings out instead of arriving as a wall. |
+
+The subtle part is inside `spread`: it keeps only the component of the push
+**across** the direction of travel. A peer directly ahead has to make this hunter
+step *around* it, not brake behind it — braking is what produced the single file
+in the first place. When the peer is dead ahead or dead behind there's no lateral
+information to work with, so the hunter falls back to its own fixed `side`
+(±1, drawn at spawn); peers that drew the other side go the other way, which is
+what actually splits the file.
+
+`activeRoots` is the module-level map of live hunter roots that makes separation
+possible. Entries are added in `spawnHunter` and removed in `Died`, and `spread`
+skips any root whose `Parent` is nil, so a hunter destroyed by some other path
+can't repel the living from beyond the grave.
+
+A chaser that reaches its claimed approach cell while still outside
+`FLANK_RANGE` simply holds position. That reads as cutting off an exit, and it
+resolves itself as soon as the target changes cell.
 
 ### Hunters cannot leave the maze
 
