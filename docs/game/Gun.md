@@ -94,9 +94,17 @@ and left alone.
 
 The `Grip` attribute overrides all of it, loose art included.
 
-**Current art:** `ServerStorage.Gun` (a Tool, pistol) wants
-`Grip = CFrame.new(0.35, 0, 0)`. If the gun ever comes back floating off the
-hand, that attribute has gone missing from the place file.
+**`DEFAULT_ART_GRIP` = `CFrame.new(0.35, 0, 0)`** is applied to any authored
+Tool whose own `Grip` is identity — identity means the author never set one,
+not that they wanted the Handle's mesh origin in the palm. The value is tuned
+against the pistol currently in `ServerStorage.Gun`.
+
+A per-model number in code is the wrong home for a grip, and it's there anyway
+for a specific reason: the attribute lives in the `.rbxl`, which this repo
+doesn't track. Without the constant, a fresh clone — or a value tuned during a
+playtest and lost when the test stopped — puts the gun back in mid-air with no
+clue why. Setting the attribute makes it irrelevant; swapping in art that
+carries its own grip makes it irrelevant. It is a floor, not a policy.
 
 ## The gun you can see
 

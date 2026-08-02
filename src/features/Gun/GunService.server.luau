@@ -38,6 +38,17 @@ local GUN_TOOL_NAME = "Blaster"
 -- its longest axis measures this. Creator Store weapons are authored at any
 -- size, and one four times too big reads as a bug rather than as a gun.
 local GUN_TARGET_LENGTH = 3
+-- Where the hand sits on a Tool that doesn't say. Tuned against the pistol in
+-- ServerStorage by dragging the live `Grip` attribute until it sat right: 0.35
+-- along the Handle's own X.
+--
+-- A per-model number in code is the wrong home for this — grip is a property of
+-- the art, and the `Grip` attribute is where it belongs. It's here because the
+-- attribute lives in the .rbxl, which this repo does not track: a fresh clone,
+-- or a value tuned during a playtest and lost on stop, would otherwise put the
+-- gun back in mid-air with no clue why. Any art carrying its own grip — an
+-- authored non-identity `Tool.Grip`, or the attribute — ignores this entirely.
+local DEFAULT_ART_GRIP = CFrame.new(0.35, 0, 0)
 
 local lastShot: { [Player]: number } = {}
 
@@ -292,9 +303,15 @@ local function userGun(): Tool?
 		clone.RequiresHandle = handle ~= nil
 		if handle then
 			weldPartsTo(handle, parts)
+			-- Identity means the author never set one, not that they wanted the
+			-- Handle's mesh origin in the palm — which for a pistol is mid-frame
+			-- and leaves the gun hanging in front of the fist.
+			if clone.Grip == CFrame.identity then
+				clone.Grip = DEFAULT_ART_GRIP
+			end
 		end
 
-		applyGrip(clone, art)
+		applyGrip(clone, art) -- the attribute still wins over both
 		return clone
 	end
 
