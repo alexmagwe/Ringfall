@@ -28,6 +28,16 @@ local HEAD_OFFSET = Vector3.new(0, 2, 0) -- roughly eye height above the root
 -- widens the shot, it doesn't see through anything.
 local ASSIST_RADIUS = 1.5
 local SIREN_SOUND_ID = "" -- user supplies; siren plays on the hit hunter
+-- Fired every shot, hit or miss — a gunshot makes noise regardless, and a
+-- silent trigger pull reads as an input that didn't register.
+--
+-- Taken from the art wherever possible: gun models ship their own fire clip
+-- (the pistol in ServerStorage carries a `Sounds` folder), and their scripts
+-- were what played it, so stripping those leaves a sound nothing will ever
+-- trigger. Substring match, because the clip is called Fire / FireSound /
+-- Handgun_Shoot / anything in that family depending on who built it.
+local SHOT_SOUND_NAMES = { "fire", "shoot", "shot", "gunshot", "blast" }
+local SHOT_SOUND_ID = "" -- user supplies; used ONLY when the art brought none
 
 -- Optional user art: a Tool named `GunModel` under ServerStorage, with a part
 -- named `Handle` (Roblox grips a Tool by that part). Missing => the code-built
@@ -328,6 +338,33 @@ local function userGun(): Tool?
 	return tool
 end
 
+-- The gun's own fire clip, if the art shipped one.
+local function shotSoundOf(tool: Tool): Sound?
+	local named: Sound? = nil
+	local only: Sound? = nil
+	local count = 0
+	for _, d in tool:GetDescendants() do
+		if not d:IsA("Sound") then
+			continue
+		end
+		count += 1
+		only = d
+		local lower = string.lower(d.Name)
+		for _, want in SHOT_SOUND_NAMES do
+			if not named and string.find(lower, want, 1, true) then
+				named = d
+			end
+		end
+	end
+	if named then
+		return named
+	end
+	-- One sound is unambiguous. Several unnamed ones are a guess, and guessing
+	-- wrong means a reload or magazine-drop clip on every trigger pull, which is
+	-- worse than silence.
+	return if count == 1 then only else nil
+end
+
 local function heldGun(player: Player): Tool?
 	local character = player.Character
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -355,6 +392,18 @@ local function giveGun(player: Player)
 	end
 
 	local tool = userGun() or buildPlaceholderGun()
+
+	-- Supplied-id seam, applied only when the art brought no clip of its own, so
+	-- setting it can never fight with real gun art. Parented to the Handle so it
+	-- plays from the gun's position rather than everywhere at once.
+	local handle = tool:FindFirstChild("Handle") :: BasePart?
+	if SHOT_SOUND_ID ~= "" and handle and not shotSoundOf(tool) then
+		local sound = Instance.new("Sound")
+		sound.Name = "Fire"
+		sound.SoundId = SHOT_SOUND_ID
+		sound.Parent = handle
+	end
+
 	tool.Parent = backpack
 	humanoid:EquipTool(tool)
 
@@ -443,6 +492,17 @@ function GunService.Start()
 		end
 
 		player:SetAttribute("Ammo", ammo - 1)
+
+		-- Before the raycast, and unconditionally: the bang belongs to pulling
+		-- the trigger, not to connecting. Played server-side so every player
+		-- hears it, which matters in a game where being heard is the cost of
+		-- shooting. `Play` on an already-playing sound restarts it, which is the
+		-- right behaviour at a 0.2s cooldown.
+		local tool = heldGun(player)
+		local sound = tool and shotSoundOf(tool)
+		if sound then
+			sound:Play()
+		end
 
 		local direction = payload.direction
 		if direction.Magnitude < 0.001 then

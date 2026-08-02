@@ -253,8 +253,30 @@ into a new round.
 
 Ammo is found, never regenerates. A kill costs most of a full magazine.
 
-## Sound seams (not yet wired to an asset)
+## Sound
 
+**The shot sound comes from the art.** Gun models ship their own fire clip — the
+pistol in `ServerStorage.Gun` carries a `Sounds` folder — and their own scripts
+were what played it, so stripping those (which we must) leaves a sound nothing
+will ever trigger. `shotSoundOf` finds it by substring match against
+`SHOT_SOUND_NAMES` (`fire` / `shoot` / `shot` / `gunshot` / `blast`), since the
+clip is called `Fire`, `FireSound`, `Handgun_Shoot` or similar depending on who
+built the model.
+
+If no name matches, a lone `Sound` in the tool is taken as unambiguous — but
+several unnamed ones are left alone. Guessing wrong there plays a reload or
+magazine-drop clip on every trigger pull, which is worse than silence.
+
+It fires **before the raycast and unconditionally**: the bang belongs to pulling
+the trigger, not to connecting, and a silent trigger reads as an input that
+didn't register. Played server-side so every player hears it — being heard is
+the cost of shooting in this game.
+
+### Seams (not wired to an asset)
+
+- `GunService.SHOT_SOUND_ID = ""` — used **only** when the art brought no clip
+  of its own, so setting it can never fight with real gun art. Parented to the
+  `Handle` at equip time so it plays positionally.
 - `GunService.SIREN_SOUND_ID = ""` — plays on the hit hunter once a player
   supplies an asset id. Silent until then.
 - `HunterService.BLAST_SOUND_ID = ""` — optional boom on hunter death/explosion.
