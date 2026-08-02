@@ -1,5 +1,5 @@
 --!strict
--- Gun input + HUD: crosshair and ammo counter, only shown while the local
+-- Gun input + HUD: cursor reticle and ammo counter, only shown while the local
 -- player has HasGun. Fires a Shoot request on click — the server is the sole
 -- authority on ammo, range, cooldown and whether a hunter was actually hit.
 -- Local cooldown here is feel only.
@@ -21,6 +21,11 @@ local AIM_RANGE = 300 -- keep in step with GunService.GUN_RANGE
 -- Must match GunService.HEAD_OFFSET: the direction we send is measured from the
 -- point the SERVER fires from, not from the camera.
 local HEAD_OFFSET = Vector3.new(0, 2, 0)
+
+local RETICLE_IDLE = Color3.fromRGB(255, 255, 255)
+local RETICLE_TARGET = Color3.fromRGB(255, 70, 60)
+local RETICLE_IDLE_SIZE = 26
+local RETICLE_TARGET_SIZE = 18 -- tightens on a target: the shot is committed
 
 local GunController = {}
 
@@ -44,25 +49,41 @@ function GunController.Start()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "GunHud"
 	gui.ResetOnSpawn = false
-	-- Deliberately NOT IgnoreGuiInset (the other HUDs are). The crosshair has to
-	-- land on the exact pixel `ViewportPointToRay` reads from, and that ray's
-	-- coordinate space excludes the topbar inset — ignoring the inset would put
-	-- the dot half an inset above where the gun actually aims.
+	-- Deliberately NOT IgnoreGuiInset (the other HUDs are). The reticle has to
+	-- land on the exact pixel the aim ray is cast through, and both
+	-- `GetMouseLocation` and `ViewportPointToRay` work in a space that excludes
+	-- the topbar inset — ignoring it would draw the reticle half an inset above
+	-- where the gun actually aims.
 	gui.IgnoreGuiInset = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	local crosshair = Instance.new("Frame")
-	crosshair.Size = UDim2.fromOffset(6, 6)
-	crosshair.Position = UDim2.fromScale(0.5, 0.5)
-	crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
-	crosshair.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	crosshair.BackgroundTransparency = 0.2
-	crosshair.BorderSizePixel = 0
-	crosshair.Visible = false
-	crosshair.Parent = gui
-	local crosshairCorner = Instance.new("UICorner")
-	crosshairCorner.CornerRadius = UDim.new(1, 0)
-	crosshairCorner.Parent = crosshair
+	-- The reticle follows the MOUSE, not the centre of the screen.
+	--
+	-- Roblox's default third-person camera leaves the cursor free: moving the
+	-- mouse moves a pointer, it doesn't turn the camera. A crosshair pinned to
+	-- screen centre therefore points wherever the camera happens to face and
+	-- nothing the player does with the mouse moves it — there was no way to
+	-- pick a target at all. Drawing on the cursor makes the pointer the aiming
+	-- device, which is what the player is already trying to use it as.
+	--
+	-- A ring rather than a dot, and the system cursor stays visible underneath:
+	-- the staging-room shelf is used while armed, and hiding the pointer to
+	-- draw our own would break clicking on the shop.
+	local reticle = Instance.new("Frame")
+	reticle.Size = UDim2.fromOffset(26, 26)
+	reticle.AnchorPoint = Vector2.new(0.5, 0.5)
+	reticle.BackgroundTransparency = 1
+	reticle.BorderSizePixel = 0
+	reticle.Visible = false
+	reticle.Parent = gui
+	local reticleCorner = Instance.new("UICorner")
+	reticleCorner.CornerRadius = UDim.new(1, 0)
+	reticleCorner.Parent = reticle
+	local reticleStroke = Instance.new("UIStroke")
+	reticleStroke.Thickness = 2
+	reticleStroke.Color = RETICLE_IDLE
+	reticleStroke.Transparency = 0.15
+	reticleStroke.Parent = reticle
 
 	local ammoLabel = Instance.new("TextLabel")
 	ammoLabel.Size = UDim2.fromOffset(160, 36)
@@ -89,47 +110,76 @@ function GunController.Start()
 	player:GetAttributeChangedSignal("Ammo"):Connect(updateAmmoLabel)
 	updateAmmoLabel()
 
-	RunService.Heartbeat:Connect(function()
-		local hasGun = player:GetAttribute("HasGun") == true
-		crosshair.Visible = hasGun
-		ammoLabel.Visible = hasGun
-	end)
+	-- Named-model check, matching how GunService judges a hit: the Gun feature
+	-- never requires HunterService, it only knows a Model called "Hunter". This
+	-- is the cosmetic half of that same contract — the server still decides
+	-- whether a shot connects.
+	local function isHunter(instance: Instance?): boolean
+		if not instance then
+			return false
+		end
+		local model = instance:FindFirstAncestorWhichIsA("Model")
+		return model ~= nil and model.Name == "Hunter"
+	end
 
-	-- The direction the shot actually has to travel: from the point the server
-	-- fires from (the character's head) to whatever the crosshair is covering.
+	-- Resolves the cursor into the direction the shot has to travel, plus what it
+	-- is currently over (so the reticle can report it). One ray, shared by the
+	-- per-frame reticle update and the fire request — they must agree, or the
+	-- reticle would promise a hit the shot doesn't take.
 	--
-	-- Sending `camera.CFrame.LookVector` instead — what this used to do — aims
-	-- from the wrong place. In third person the camera sits several studs behind
-	-- and above the character, so a ray cast from the head along the camera's
-	-- direction is that whole offset off target: near-parallel lines that only
-	-- converge at infinity. Anything close enough to matter was missed by roughly
-	-- the camera offset, which is why shooting felt broken rather than merely
-	-- hard. Aiming at the POINT the camera sees converges both rays on the same
-	-- spot at every distance.
-	local function aimDirection(): Vector3?
+	-- The direction is measured from the point the SERVER fires from — the
+	-- character's head — to the point under the cursor, NOT along the camera's
+	-- look vector. In third person the camera sits several studs behind and above
+	-- the character, so a ray cast from the head along the camera's direction is
+	-- offset by that whole displacement: near-parallel lines that only converge
+	-- at infinity, missing by most of the camera offset at exactly the ranges a
+	-- fight happens at. Aiming at a POINT converges both rays at every distance.
+	local function resolveAim(): (Vector3?, Instance?)
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not character or not root then
-			return nil
+			return nil, nil
 		end
 
-		local viewport = camera.ViewportSize
-		local centreRay = camera:ViewportPointToRay(viewport.X / 2, viewport.Y / 2)
+		local cursor = UserInputService:GetMouseLocation()
+		local cursorRay = camera:ViewportPointToRay(cursor.X, cursor.Y)
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
 		params.FilterDescendantsInstances = { character } -- includes the held gun
 
-		local hit = workspace:Raycast(centreRay.Origin, centreRay.Direction * AIM_RANGE, params)
-		-- Nothing under the crosshair (open sky / past range): aim at the far end
-		-- of the same ray, so the shot still goes where you're looking.
-		local aimPoint = if hit then hit.Position else centreRay.Origin + centreRay.Direction * AIM_RANGE
+		local hit = workspace:Raycast(cursorRay.Origin, cursorRay.Direction * AIM_RANGE, params)
+		-- Nothing under the cursor (open sky / past range): aim at the far end of
+		-- the same ray, so the shot still goes where you're pointing.
+		local aimPoint = if hit then hit.Position else cursorRay.Origin + cursorRay.Direction * AIM_RANGE
 
 		local delta = aimPoint - (root.Position + HEAD_OFFSET)
 		if delta.Magnitude < 0.001 then
-			return nil
+			return nil, nil
 		end
-		return delta.Unit
+		return delta.Unit, if hit then hit.Instance else nil
 	end
+
+	-- Reticle: rides the cursor, and turns red and tightens over a hunter. That
+	-- feedback is the targeting, really — the maze is dark and a hunter at range
+	-- is a silhouette, so "am I actually pointed at it?" is a question the player
+	-- cannot answer from the render alone.
+	RunService.RenderStepped:Connect(function()
+		local hasGun = player:GetAttribute("HasGun") == true
+		reticle.Visible = hasGun
+		ammoLabel.Visible = hasGun
+		if not hasGun then
+			return
+		end
+
+		local cursor = UserInputService:GetMouseLocation()
+		reticle.Position = UDim2.fromOffset(cursor.X, cursor.Y)
+
+		local _, hitInstance = resolveAim()
+		local onTarget = isHunter(hitInstance)
+		reticleStroke.Color = if onTarget then RETICLE_TARGET else RETICLE_IDLE
+		local size = if onTarget then RETICLE_TARGET_SIZE else RETICLE_IDLE_SIZE
+		reticle.Size = UDim2.fromOffset(size, size)
+	end)
 
 	local lastLocalShot = 0
 	UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
@@ -151,7 +201,7 @@ function GunController.Start()
 			return
 		end
 
-		local direction = aimDirection()
+		local direction = resolveAim()
 		if not direction then
 			return -- no character yet; don't burn the cooldown on a shot that can't fire
 		end

@@ -10,14 +10,14 @@ Files:
 - `src/features/Gun/Net.luau` — the `Shoot` packet (client request only).
 - `src/features/Gun/GunService.server.luau` — validates and applies damage.
   Server-authoritative; the sole place ammo is decremented and hits are judged.
-- `src/features/Gun/GunController.client.luau` — crosshair + ammo HUD, input,
+- `src/features/Gun/GunController.client.luau` — cursor reticle + ammo HUD, input,
   sends the fire request. Raw HUD (no React), gated on `HasGun`.
 - `src/features/Gun/Controls.luau` — registers "MOUSE 1 — Shoot (when armed)"
   in the key legend.
 
 ## Studio assets
 
-**None required.** The crosshair, ammo counter and the gun itself are all
+**None required.** The reticle, ammo counter and the gun itself are all
 code-built. A muzzle flash / tracer / siren sound are optional and left as `""`
 seams (see below).
 
@@ -109,7 +109,7 @@ carries its own grip makes it irrelevant. It is a floor, not a policy.
 ## The gun you can see
 
 `HasGun` is an attribute, and for a while it was *only* an attribute — a
-crosshair appeared and your hands stayed empty, so nothing distinguished an
+reticle appeared and your hands stayed empty, so nothing distinguished an
 armed player from an unarmed one, to themselves or to anyone watching.
 `GunService` now mirrors the attribute into a real held `Tool`:
 
@@ -132,7 +132,7 @@ armed player from an unarmed one, to themselves or to anyone watching.
   sitting under the ammo readout that carries the real information. It lives in
   the Gun feature rather than a shared UI file because no other feature spawns
   a Tool, and it's wrapped in a `pcall`: `SetCoreGuiEnabled` throws if the
-  CoreGui isn't up yet, and losing the crosshair and aiming over a cosmetic
+  CoreGui isn't up yet, and losing the reticle and aiming over a cosmetic
   call would be a bad trade.
 
 ## Client-request / server-authority split
@@ -158,16 +158,38 @@ ByteNet's `vec3` type) is a **request, never a source of truth**:
 A client can never fire without `HasGun`, past 0 ammo, or faster than
 `FIRE_COOLDOWN` — all three gates are server-side, not merely mirrored.
 
+## Targeting
+
+**The reticle rides the cursor, not the centre of the screen.** Roblox's default
+third-person camera leaves the mouse free — moving it moves a pointer, it does
+not turn the camera — so a crosshair pinned to screen centre points wherever the
+camera happens to face and *nothing the player does with the mouse moves it*.
+There was no way to pick a target at all. Drawing on the cursor makes the
+pointer the aiming device, which is what a player is already trying to use it
+as.
+
+It's a ring, and the system cursor stays visible underneath it: the staging-room
+shelf is used while armed, so hiding the pointer to draw our own would break
+clicking on the shop. Over a hunter the ring turns red and tightens
+(`RETICLE_TARGET_SIZE`). That feedback *is* the targeting: the maze is dark and
+a hunter at range is a silhouette, so "am I actually pointed at it?" is a
+question the render alone can't answer.
+
+`isHunter` in the controller is a named-`Model` check, the cosmetic half of the
+same contract `GunService` uses to judge a hit — the Gun feature never requires
+`HunterService`. The reticle and the fire request share one `resolveAim` call,
+so the ring can't promise a hit the shot doesn't take.
+
 ## Where the shot actually goes
 
-The server fires from the character's head; the crosshair is drawn at the centre
-of the screen, which is the *camera's* view. Those are two different points, and
+The server fires from the character's head; the reticle sits under the cursor,
+which is the *camera's* view of the world. Those are two different points, and
 reconciling them is the whole of the aiming problem.
 
-`GunController.aimDirection` resolves it by aiming at a **point**, not along a
-direction: it raycasts from `camera:ViewportPointToRay(centre)` to find what the
-crosshair is covering (falling back to `AIM_RANGE` down that ray when the shot
-goes into open space), then sends the unit vector from `HumanoidRootPart +
+`GunController.resolveAim` resolves it by aiming at a **point**, not along a
+direction: it raycasts from `camera:ViewportPointToRay(cursor)` to find what the
+cursor is covering (falling back to `AIM_RANGE` down that ray when the shot goes
+into open space), then sends the unit vector from `HumanoidRootPart +
 HEAD_OFFSET` — the server's own firing point — to that point. Both rays converge
 on the same spot at every distance.
 
@@ -181,9 +203,10 @@ by most of the camera offset at exactly the ranges a fight happens at.
 Two constants have to be kept in step by hand, and are commented as such in both
 files: `HEAD_OFFSET` (the firing point) and `AIM_RANGE` / `GUN_RANGE`.
 
-`GunHud` is also the one HUD with **`IgnoreGuiInset = false`**. `ViewportPointToRay`
-works in a coordinate space that excludes the topbar inset, so a crosshair
-ignoring the inset would sit half an inset above where the gun really aims.
+`GunHud` is also the one HUD with **`IgnoreGuiInset = false`**. Both
+`GetMouseLocation` and `ViewportPointToRay` work in a coordinate space that
+excludes the topbar inset, so a reticle ignoring the inset would sit half an
+inset above where the gun really aims.
 
 **Aim assist.** A raycast is a zero-width line, hunters move, and the client's
 view of them trails the server. If the exact ray misses, the server takes one
