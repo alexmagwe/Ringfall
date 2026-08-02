@@ -33,10 +33,28 @@ function AtmosphereController.Start()
 	-- 14.0 is mid-afternoon — sun high enough to reach the maze floor between
 	-- 40-stud walls, but off vertical so the walls still cast readable shadows.
 	Lighting.ClockTime = 14
-	Lighting.Brightness = 3
-	Lighting.Ambient = Color3.fromRGB(120, 128, 140)
-	Lighting.OutdoorAmbient = Color3.fromRGB(140, 150, 165)
-	Lighting.EnvironmentDiffuseScale = 1
+	-- CONTRAST, NOT BRIGHTNESS. Ambient used to be (120,128,140) with
+	-- OutdoorAmbient at (140,150,165), which is a lot of fill light. Fill light
+	-- lands on every face of every part equally, so nothing has a lit side and a
+	-- shadowed side, and every surface reads as flat plastic. That — not the
+	-- geometry, and not the material — is what made the maze look cheap.
+	--
+	-- The fix is to take light AWAY from the fill and leave it in the sun. The
+	-- maze is open-topped and the sun does the real work at ClockTime 14, so
+	-- corridors and the floor stay just as readable; what changes is that walls
+	-- now have a bright face and a dark face, and everything standing on the
+	-- floor sits in its own shadow.
+	--
+	-- Do not "fix" darkness by raising these two. That is the same mistake the
+	-- header describes, one step further on: the reason the old midnight setting
+	-- failed was no sun, and the reason the daylight setting looked flat was too
+	-- much fill. Raise Brightness, or move ClockTime, and leave the fill low.
+	Lighting.Brightness = 3.5
+	Lighting.Ambient = Color3.fromRGB(40, 44, 52)
+	Lighting.OutdoorAmbient = Color3.fromRGB(95, 105, 122)
+	-- Sky-derived diffuse is fill light too, by another name. At 1 it was
+	-- undoing part of the cut above.
+	Lighting.EnvironmentDiffuseScale = 0.6
 	Lighting.EnvironmentSpecularScale = 0.4
 	Lighting.GlobalShadows = true
 	-- ~5 bands of sight (a band is 42 studs) rather than ~2. Walls still block

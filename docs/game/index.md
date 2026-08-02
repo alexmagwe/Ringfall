@@ -38,6 +38,7 @@ one-way dependency rule that keeps the framework updatable.
 | [PlayerData.md](PlayerData.md) | Profile persistence + the `registerTemplate` discovery convention |
 | [Settings.md](Settings.md) | Settings registry, server validation, the `Settings.luau` discovery convention |
 | [Notes.md](Notes.md) | Persisted per-player note (full-stack reference feature) |
+| [Atmosphere.md](Atmosphere.md) | Lighting and fog — the contrast-not-brightness rule, and why raising Ambient is never the fix |
 | [Music.md](Music.md) | Phase-driven scoring — looping beds per round state, plus one-shot stings layered over them |
 | [PickupFX.md](PickupFX.md) | Client-side pickup animation system |
 | [Sidebar.md](Sidebar.md) | HUD navigation chrome |

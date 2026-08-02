@@ -44,6 +44,15 @@ export type Look = {
 	-- colour.
 	wallColor: Color3?,
 	wallMaterial: Enum.Material?,
+	wallJitter: number, -- fraction of lightness variation applied per wall part
+
+	-- Fallen stone heaped where the wall meets the ground. Nothing in a real
+	-- place meets the floor in a clean straight line, and that junction is at
+	-- eye level for the whole run — breaking it is worth more than anything
+	-- added out in the open.
+	rubbleChance: number,
+	rubblePerWall: NumberRange,
+	rubbleColors: { Color3 },
 
 	-- Fraction of wall segments that grow anything at all. Below 1 the district
 	-- reads as patchy and organic; at 1 every segment looks the same, which is
@@ -81,19 +90,35 @@ export type Look = {
 -- purpose: a bright garden green next to concrete reads as a different game,
 -- not as a ruin.
 --
--- Budget: ~620 wall segments x 0.4 x ~4 pieces each, plus ~270 tufts, lands
--- around 1250 extra parts. Raise any of it and read the count the build prints
--- before you ship — this rebuilds on every round.
+-- Budget: ~620 wall segments, x0.4 for vines at ~4 pieces each and x0.55 for
+-- rubble at ~3, plus the loose tufts. Lands around 1900 extra parts. Raise any
+-- of it and read the count the build prints before you ship — this rebuilds on
+-- every round.
+--
+-- Spend it on the wall bases before anything else. A heap at the junction does
+-- more for the district than the same parts scattered in the open, because that
+-- line is at eye level for the whole run.
 --
 -- Broad tinted discs over the ground were tried here and removed. Whatever the
 -- size or the tone, a circle lying on flat ground reads as a circle: the eye
 -- finds the rim immediately, and nothing outdoors has one. Ground variation has
 -- to come from geometry that breaks the silhouette, not from paint.
 Dressing.OVERGROWN = {
-	-- Weathered stone, NOT moss. Barely off the maze's own grey, and warmer, so
-	-- it reads as older rather than as a different material.
-	wallColor = Color3.fromRGB(84, 86, 78),
+	-- Dark, cool stone. It was (84,86,78) — a warm mid-grey that sat at almost
+	-- exactly the lightness of the grass, so the two merged into one tone and
+	-- the whole district read as mush. Neighbouring surfaces need to differ in
+	-- LIGHTNESS, not only in hue; this is now clearly the darker of the two, and
+	-- cool against the warm green.
+	wallColor = Color3.fromRGB(58, 63, 70),
 	wallMaterial = Enum.Material.Slate, -- older, rougher stone than the Concrete inward
+	wallJitter = 0.05,
+	rubbleChance = 0.55,
+	rubblePerWall = NumberRange.new(1, 3),
+	rubbleColors = {
+		Color3.fromRGB(64, 68, 72),
+		Color3.fromRGB(52, 56, 62),
+		Color3.fromRGB(74, 76, 74),
+	},
 	growthChance = 0.4,
 	strandsPerWall = NumberRange.new(1, 3),
 	shootsPerWall = NumberRange.new(0, 2),
@@ -110,7 +135,9 @@ Dressing.OVERGROWN = {
 	growthMaterial = Enum.Material.Grass,
 	groundColor = Color3.fromRGB(72, 96, 58),
 	groundMaterial = Enum.Material.Grass,
-	tuftClumps = 60,
+	-- Fewer loose clumps than before: the rubble now carries its own tufts, so
+	-- the growth that matters is already against the walls where players walk.
+	tuftClumps = 40,
 	tuftsPerClump = NumberRange.new(3, 6),
 	clumpSpread = 7,
 	tuftHeight = NumberRange.new(1.2, 3.4),
@@ -148,9 +175,79 @@ local function newGrowth(size: Vector3, cframe: CFrame, color: Color3, material:
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
-	part.CastShadow = false
+	-- Shadows ON, and this is not a detail. An object that casts no shadow does
+	-- not touch anything — a tuft with no shadow hovers over the grass and a
+	-- vine with none is a sticker on the wall. Contact shadow is most of what
+	-- makes small scenery look placed rather than pasted. The flat ground discs
+	-- turn it back off in newDisc, where it buys nothing and costs plenty.
+	part.CastShadow = true
 	part.Parent = parent
 	return part
+end
+
+-- Nudges a colour's lightness without moving its hue. One exact colour repeated
+-- across 600 wall parts reads as paint; a few percent of variation per part
+-- reads as stone. Scaling all three channels together is what keeps the hue put.
+local function jitter(color: Color3, amount: number, rng: Random): Color3
+	local f = 1 + rng:NextNumber(-amount, amount)
+	return Color3.new(math.clamp(color.R * f, 0, 1), math.clamp(color.G * f, 0, 1), math.clamp(color.B * f, 0, 1))
+end
+
+-- Heaps fallen stone and a little growth where the wall meets the ground.
+--
+-- This is the highest-value detail in the whole module, and it is worth saying
+-- why. Every other piece here is scenery you look at; this one fixes a junction
+-- you cannot stop looking at. A wall meeting a floor along a perfect straight
+-- line is the single loudest tell that a place was generated, and that line
+-- runs the length of every corridor at eye level for the whole run. Breaking it
+-- costs a few boxes.
+--
+-- Pieces straddle the face rather than sitting beside it — half buried in the
+-- wall — so the heap reads as stone that fell out of it, not as boxes parked
+-- against it.
+local function rubbleAtBase(wall: BasePart, look: Look, rng: Random, parent: Instance)
+	local halfLength = wall.Size.X / 2
+	local halfHeight = wall.Size.Y / 2
+	local faceZ = wall.Size.Z / 2
+
+	local count = rng:NextInteger(look.rubblePerWall.Min, look.rubblePerWall.Max)
+	for _ = 1, count do
+		local width = rng:NextNumber(1.6, 4.2)
+		local height = rng:NextNumber(0.7, 2.4)
+		local depth = rng:NextNumber(1.2, 2.8)
+		local alongX = rng:NextNumber(-halfLength * 0.9, halfLength * 0.9)
+		local side = if rng:NextNumber() < 0.5 then 1 else -1
+		-- Half the depth sits inside the wall, so there is no gap to see down.
+		local offZ = side * (faceZ + depth * 0.25)
+		-- Tipped every which way. Axis-aligned boxes read as boxes.
+		local tumble = CFrame.Angles(rng:NextNumber(-0.35, 0.35), rng:NextNumber(0, math.pi * 2), rng:NextNumber(-0.35, 0.35))
+
+		newGrowth(
+			Vector3.new(width, height, depth),
+			wall.CFrame * CFrame.new(alongX, -halfHeight + height * 0.35, offZ) * tumble,
+			pick(rng, look.rubbleColors),
+			wall.Material,
+			parent,
+			"Rubble"
+		)
+
+		-- Growth collects against fallen stone. One tuft per piece ties the two
+		-- together instead of leaving clean rock on clean grass.
+		if rng:NextNumber() < 0.6 then
+			local tuftHeight = randomIn(rng, look.tuftHeight)
+			local tuftWidth = randomIn(rng, look.tuftWidth)
+			newGrowth(
+				Vector3.new(tuftWidth, tuftHeight, tuftWidth),
+				wall.CFrame
+					* CFrame.new(alongX + rng:NextNumber(-2.5, 2.5), -halfHeight + tuftHeight / 2, side * (faceZ + rng:NextNumber(0.5, 2.5)))
+					* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0),
+				pick(rng, look.stemColors),
+				look.growthMaterial,
+				parent,
+				"Tuft"
+			)
+		end
+	end
 end
 
 -- Hangs strands down one wall face and grows climbers up from its base.
@@ -238,6 +335,9 @@ local function newDisc(x: number, z: number, radius: number, topY: number, color
 		name
 	)
 	disc.Shape = Enum.PartType.Cylinder
+	-- A disc lying flat on the floor has nothing to cast a shadow onto, and one
+	-- of these is 1000 studs across. Pure cost.
+	disc.CastShadow = false
 	return disc
 end
 
@@ -348,10 +448,16 @@ function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR
 
 	for _, wall in walls do
 		if look.wallColor then
-			wall.Color = look.wallColor
+			wall.Color = jitter(look.wallColor, look.wallJitter, rng)
 		end
 		if look.wallMaterial then
 			wall.Material = look.wallMaterial
+		end
+		-- Rubble is rolled separately from growth, and more often. The junction
+		-- it breaks is worth more than anything out in the open, so a wall can
+		-- get a heap at its foot without also carrying vines.
+		if rng:NextNumber() < look.rubbleChance then
+			rubbleAtBase(wall, look, rng, folder)
 		end
 		if rng:NextNumber() > look.growthChance then
 			continue

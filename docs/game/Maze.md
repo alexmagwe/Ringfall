@@ -152,6 +152,24 @@ Three rules came out of the first version, which looked flat and wrong:
   tinted discs were tried for ground variation and removed: whatever the size or
   tone, a circle on flat ground reads as a circle, because the eye finds the rim
   and nothing outdoors has one. Ground variation has to break the silhouette.
+- **Neighbouring surfaces need different LIGHTNESS, not just different hue.**
+  The stone was a warm mid-grey sitting at almost exactly the grass's lightness,
+  and the two merged into one tone. It is now clearly darker and cooler than the
+  grass it stands in.
+- **One exact colour across 600 parts reads as paint.** `wallJitter` (0.05)
+  varies each wall part's lightness a few percent, hue held still by scaling all
+  three channels together.
+- **Break the junction before anything else.** A wall meeting a floor along a
+  perfect straight line is the loudest tell that a place was generated, and that
+  line is at eye level for the whole run. `rubbleAtBase` heaps tipped stone
+  there, half-buried in the wall so it reads as fallen out of it rather than
+  parked against it, with a tuft against most pieces to tie stone to grass. It
+  rolls separately from the vines, and more often (`rubbleChance` 0.55), because
+  those parts buy more there than anywhere in the open.
+- **Everything casts a shadow** except the flat ground discs. An object with no
+  shadow does not touch anything: a tuft hovers, a vine becomes a sticker.
+  Contact shadow is most of what makes small scenery look placed. This one is
+  also why the light matters — see [Atmosphere.md](Atmosphere.md).
 - **Vines need thickness and a kink.** At 0.35 studs against a 40-stud wall they
   were threads that vanished at any distance. They are now 0.9–2.2 thick, and a
   strand can run as two segments that meet at a slight angle — that kink is most
@@ -220,9 +238,10 @@ growth rather than as clipping.
 ### Budget
 
 The outermost district holds roughly 620 wall segments once the perimeter is
-chopped into chords. The `Look` table is therefore tuned to add ~1250 parts, and
+chopped into chords. The `Look` table is therefore tuned to add ~1900 parts, and
 `tuftClumps` is a **flat count, not a per-wall multiplier** — anything
 multiplied per wall runs to four figures on a ring that rebuilds every round.
+Spend any increase on the wall bases first.
 `Dressing.apply` prints the wall and part counts on every build, so a raised
 density shows up in the output before it shows up as a frame-rate complaint.
 
