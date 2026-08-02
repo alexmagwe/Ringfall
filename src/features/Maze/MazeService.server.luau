@@ -19,6 +19,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Constants = require(ReplicatedStorage.Features.Maze.Constants)
+local Dressing = require(ReplicatedStorage.Features.Maze.Dressing)
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
 
 local MazeService = {}
@@ -774,6 +775,18 @@ function MazeService.rebuild(seed: number)
 		local outerBand, innerBand = g[1], g[2]
 		buildGate(outerBand, gateSectors[i], MazeNav.districtOf(innerBand), gatesFolder)
 	end
+
+	-- Set dressing, once the walls it reads actually exist. The outermost
+	-- district is an overgrown ruin: it is where players spawn, so it sets the
+	-- first impression, and it gives the run a gradient from ruin at the edge to
+	-- sealed vault at the centre. Dressing only adds scenery — it never moves a
+	-- collider or cuts a wall — so it cannot change what was carved above. See
+	-- Dressing.luau.
+	--
+	-- Derived from DISTRICT_BANDS rather than hardcoding band 10, so retuning
+	-- the district split can't leave the dressing covering the wrong ring.
+	local outerBands = DISTRICT_BANDS[#DISTRICT_BANDS]
+	Dressing.apply(mazeFolder, Dressing.OVERGROWN, RADII[outerBands[1]], RADII[outerBands[2] + 1], rng)
 
 	-- Staging room + corridor: outside the perimeter, opening through the cut
 	-- made above. Also positions SpawnLocation (inside the room, facing back

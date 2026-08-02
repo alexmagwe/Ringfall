@@ -20,6 +20,8 @@ Files:
   read, and `MazeNav.districtOf`
   — the single shared band-to-district mapping (see below).
 - `src/features/Maze/Constants.luau` — `SEED`, the season/default seed.
+- `src/features/Maze/Dressing.luau` — per-district set dressing (the outermost
+  district's overgrowth). Scenery only; see below.
 
 ## Sealed districts
 
@@ -131,10 +133,64 @@ Gates are consumed by:
   needing no district maths client-side, until the vault is taken (see
   [Salvage.md](Salvage.md)).
 
+## District dressing
+
+`src/features/Maze/Dressing.luau` gives a district a look of its own. Today only
+the **outermost district is dressed: an overgrown ruin.** Vines hang off the
+walls, shoots climb out of their bases, growth spreads across the floor, and the
+stone is mossy Slate instead of clean Concrete.
+
+**This is a navigation fix as much as an art pass.** The maze carves itself in
+one wall colour on one floor disc, so every cell in a district was identical to
+every other. Sweeping a ring for its single gate needs landmarks you can
+remember, and identical cells give you none — you cannot tell an arc you already
+searched from one you have not.
+
+The outer district gets it because players spawn there, so it sets the first
+impression, and it gives the run a gradient: a ruin at the edge, intact
+structure in the middle, a sealed vault at the centre. The maze reads as better
+defended the deeper you go.
+
+`MazeService` calls `Dressing.apply` after the gates are built, and derives the
+radius range from `MazeNav.DISTRICT_BANDS[#DISTRICT_BANDS]` rather than naming
+band 10 — retuning the district split cannot leave the dressing over the wrong
+ring. It runs on the build's own seeded `rng`, so a seed reproduces its dressing
+exactly as it reproduces its layout.
+
+### Look only, on purpose
+
+Every part `Dressing` adds is `CanCollide` / `CanQuery` / `CanTouch` false:
+
+- The navigation graph is untouched. No collider moved, and hunters still walk
+  cell centres.
+- **A vine curtain is not cover.** `HunterService.canSee` only counts a raycast
+  hit on a part named `Arc`, `Spoke` or `Perimeter`, and `CanQuery = false`
+  keeps growth out of every raycast in the game regardless — hunter sight, the
+  gun's aim ray, and the shot itself.
+- Nothing can trip a pickup's `Touched` or block a corridor.
+
+To make growth mechanical later, the change is deliberate rather than a tweak:
+give the thick strands query-visible colliders and name them into `canSee`.
+
+**Never cut a real gap in a wall to fake decay.** The wall *is* the maze. A hole
+opens a passage the carve never made, which can strand a gate and break the
+sealed-district rule. Decay is painted on; the collider stays whole.
+
+### Budget
+
+The outermost district holds roughly 620 wall segments once the perimeter is
+chopped into chords. The `Look` table is therefore tuned to add ~700 parts, and
+`floorPatchCount` is a **flat count, not a per-wall multiplier** — anything
+multiplied per wall runs to four figures on a ring that rebuilds every round.
+`Dressing.apply` prints the wall and part counts on every build, so a raised
+density shows up in the output before it shows up as a frame-rate complaint.
+
+Adding a second district look is a `Look` table plus one `Dressing.apply` call.
+
 ## Studio assets
 
-**None.** Everything — floor, walls, the staging room, the Vault — is built
-procedurally.
+**None.** Everything — floor, walls, the staging room, the Vault, the
+overgrowth — is built procedurally.
 
 `MazeService` uses a `SpawnLocation`, and **creates one if the place has none**
 (warning to the output as it does). If you place your own, that one is reused —
