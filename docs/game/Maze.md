@@ -148,7 +148,10 @@ Three rules came out of the first version, which looked flat and wrong:
   stone and the vines carry the colour.
 - **Growth needs height.** Flat discs on a flat floor are stains whatever colour
   they are. The tufts are boxes with real height, in clumps, because even
-  spacing reads as a texture and clumps read as growth that took hold.
+  spacing reads as a texture and clumps read as growth that took hold. Broad
+  tinted discs were tried for ground variation and removed: whatever the size or
+  tone, a circle on flat ground reads as a circle, because the eye finds the rim
+  and nothing outdoors has one. Ground variation has to break the silhouette.
 - **Vines need thickness and a kink.** At 0.35 studs against a 40-stud wall they
   were threads that vanished at any distance. They are now 0.9–2.2 thick, and a
   strand can run as two segments that meet at a slight angle — that kink is most
@@ -217,10 +220,9 @@ growth rather than as clipping.
 ### Budget
 
 The outermost district holds roughly 620 wall segments once the perimeter is
-chopped into chords. The `Look` table is therefore tuned to add ~1300 parts, and
-`tuftClumps` / `mottleCount` are **flat counts, not per-wall multipliers** —
-anything multiplied per wall runs to four figures on a ring that rebuilds every
-round.
+chopped into chords. The `Look` table is therefore tuned to add ~1250 parts, and
+`tuftClumps` is a **flat count, not a per-wall multiplier** — anything
+multiplied per wall runs to four figures on a ring that rebuilds every round.
 `Dressing.apply` prints the wall and part counts on every build, so a raised
 density shows up in the output before it shows up as a frame-rate complaint.
 

@@ -64,13 +64,6 @@ export type Look = {
 	groundColor: Color3,
 	groundMaterial: Enum.Material,
 
-	-- Broad, subtle discs of nearby greens over that ground. Large and barely
-	-- different on purpose: small and darker reads as a stain, wide and close
-	-- reads as ground that is not uniform.
-	mottleCount: number,
-	mottleColors: { Color3 },
-	mottleRadius: NumberRange,
-
 	-- Tufts with actual height, in clumps. A flat disc on a flat floor is a
 	-- stain no matter what colour it is — only vertical geometry reads as
 	-- growth. Counts are flat, not per-wall multipliers: the outermost district
@@ -88,9 +81,14 @@ export type Look = {
 -- purpose: a bright garden green next to concrete reads as a different game,
 -- not as a ruin.
 --
--- Budget: ~620 wall segments x 0.4 x ~4 pieces each, plus ~270 tufts and the
--- mottle, lands around 1300 extra parts. Raise any of it and read the count the
--- build prints before you ship — this rebuilds on every round.
+-- Budget: ~620 wall segments x 0.4 x ~4 pieces each, plus ~270 tufts, lands
+-- around 1250 extra parts. Raise any of it and read the count the build prints
+-- before you ship — this rebuilds on every round.
+--
+-- Broad tinted discs over the ground were tried here and removed. Whatever the
+-- size or the tone, a circle lying on flat ground reads as a circle: the eye
+-- finds the rim immediately, and nothing outdoors has one. Ground variation has
+-- to come from geometry that breaks the silhouette, not from paint.
 Dressing.OVERGROWN = {
 	-- Weathered stone, NOT moss. Barely off the maze's own grey, and warmer, so
 	-- it reads as older rather than as a different material.
@@ -112,13 +110,6 @@ Dressing.OVERGROWN = {
 	growthMaterial = Enum.Material.Grass,
 	groundColor = Color3.fromRGB(72, 96, 58),
 	groundMaterial = Enum.Material.Grass,
-	mottleCount = 40,
-	mottleColors = {
-		Color3.fromRGB(64, 86, 52),
-		Color3.fromRGB(82, 104, 62),
-		Color3.fromRGB(76, 88, 56),
-	},
-	mottleRadius = NumberRange.new(16, 46),
 	tuftClumps = 60,
 	tuftsPerClump = NumberRange.new(3, 6),
 	clumpSpread = 7,
@@ -290,25 +281,6 @@ local function pointInRing(innerR: number, outerR: number, rng: Random): (number
 	return r * math.cos(a), r * math.sin(a)
 end
 
--- Broad, barely-different discs over the ground, so it is not one flat sheet of
--- colour. Wide and close in tone on purpose: the first attempt used small dark
--- discs, and they read as spilled paint rather than as uneven ground.
-local function mottleGround(innerR: number, outerR: number, floorTopY: number, look: Look, rng: Random, parent: Instance)
-	for _ = 1, look.mottleCount do
-		local x, z = pointInRing(innerR, outerR, rng)
-		newDisc(
-			x,
-			z,
-			randomIn(rng, look.mottleRadius),
-			floorTopY + 0.18,
-			pick(rng, look.mottleColors),
-			look.groundMaterial,
-			parent,
-			"GroundMottle"
-		)
-	end
-end
-
 -- Tufts of growth, in clumps.
 --
 -- These have HEIGHT, and that is the whole point. A flat disc lying on a flat
@@ -388,7 +360,6 @@ function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR
 	end
 
 	layGround(mazeFolder, innerR, outerR, floorTopY, look, folder)
-	mottleGround(innerR, outerR, floorTopY, look, rng, folder)
 	scatterTufts(innerR, outerR, floorTopY, look, rng, folder)
 
 	-- Matches MazeService's own build line. The part count is the number worth
