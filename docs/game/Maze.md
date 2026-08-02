@@ -137,8 +137,22 @@ Gates are consumed by:
 
 `src/features/Maze/Dressing.luau` gives a district a look of its own. Today only
 the **outermost district is dressed: an overgrown ruin.** The ground is grass,
-vines hang off the walls, shoots climb out of their bases, darker clumps thicken
-across the floor, and the stone is mossy Slate instead of clean Concrete.
+thick vines hang off the walls, shoots climb out of their bases, tufts clump
+across the floor, and the stone is weathered Slate instead of clean Concrete.
+
+Three rules came out of the first version, which looked flat and wrong:
+
+- **The walls stay grey.** Painting them green to match the grass turned the
+  district into one green mass with nothing reading against anything. Growth is
+  only visible where it contrasts with what it grows on, so the wall carries the
+  stone and the vines carry the colour.
+- **Growth needs height.** Flat discs on a flat floor are stains whatever colour
+  they are. The tufts are boxes with real height, in clumps, because even
+  spacing reads as a texture and clumps read as growth that took hold.
+- **Vines need thickness and a kink.** At 0.35 studs against a 40-stud wall they
+  were threads that vanished at any distance. They are now 0.9–2.2 thick, and a
+  strand can run as two segments that meet at a slight angle — that kink is most
+  of the difference between a vine and a pipe.
 
 **This is a navigation fix as much as an art pass.** The maze carves itself in
 one wall colour on one floor disc, so every cell in a district was identical to
@@ -203,9 +217,10 @@ growth rather than as clipping.
 ### Budget
 
 The outermost district holds roughly 620 wall segments once the perimeter is
-chopped into chords. The `Look` table is therefore tuned to add ~700 parts, and
-`patchCount` is a **flat count, not a per-wall multiplier** — anything
-multiplied per wall runs to four figures on a ring that rebuilds every round.
+chopped into chords. The `Look` table is therefore tuned to add ~1300 parts, and
+`tuftClumps` / `mottleCount` are **flat counts, not per-wall multipliers** —
+anything multiplied per wall runs to four figures on a ring that rebuilds every
+round.
 `Dressing.apply` prints the wall and part counts on every build, so a raised
 density shows up in the output before it shows up as a frame-rate complaint.
 

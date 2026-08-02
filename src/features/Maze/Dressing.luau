@@ -36,6 +36,12 @@ local Dressing = {}
 
 export type Look = {
 	-- Repaints the district's walls. nil leaves them as carved.
+	--
+	-- KEEP THIS CLOSE TO STONE. The first attempt painted the walls green to
+	-- match the grass, and the district turned into one flat green mass with
+	-- nothing reading against anything. Growth is only visible when it contrasts
+	-- with what it grows on, so the wall stays grey and the vines carry the
+	-- colour.
 	wallColor: Color3?,
 	wallMaterial: Enum.Material?,
 
@@ -45,6 +51,11 @@ export type Look = {
 	growthChance: number,
 	strandsPerWall: NumberRange, -- hanging vines on a wall that grows any
 	shootsPerWall: NumberRange, -- climbers out of the base of that same wall
+	-- Boxes per strand. Above 1, each strand kinks partway down instead of
+	-- running dead straight, which is most of the difference between a vine and
+	-- a pipe.
+	segmentsPerStrand: NumberRange,
+	strandThickness: NumberRange,
 
 	stemColors: { Color3 }, -- one is drawn per strand, so no two runs match
 	growthMaterial: Enum.Material,
@@ -53,28 +64,45 @@ export type Look = {
 	groundColor: Color3,
 	groundMaterial: Enum.Material,
 
-	-- Darker clumps scattered on top of that ground, so it is not one flat
-	-- sheet of colour. A flat count, not a per-wall multiplier: the outermost
-	-- district carries roughly 620 wall segments once the perimeter is chopped
-	-- into chords, so anything multiplied per wall runs to four figures of parts
-	-- on a ring that gets rebuilt every round.
-	patchCount: number,
-	patchColor: Color3,
-	patchRadius: NumberRange,
+	-- Broad, subtle discs of nearby greens over that ground. Large and barely
+	-- different on purpose: small and darker reads as a stain, wide and close
+	-- reads as ground that is not uniform.
+	mottleCount: number,
+	mottleColors: { Color3 },
+	mottleRadius: NumberRange,
+
+	-- Tufts with actual height, in clumps. A flat disc on a flat floor is a
+	-- stain no matter what colour it is — only vertical geometry reads as
+	-- growth. Counts are flat, not per-wall multipliers: the outermost district
+	-- carries roughly 620 wall segments once the perimeter is chopped into
+	-- chords, so anything multiplied per wall runs to four figures of parts on a
+	-- ring that gets rebuilt every round.
+	tuftClumps: number,
+	tuftsPerClump: NumberRange,
+	clumpSpread: number, -- studs from the clump centre
+	tuftHeight: NumberRange,
+	tuftWidth: NumberRange,
 }
 
 -- The abandoned outer ring. Greens are desaturated and grey-leaning on
 -- purpose: a bright garden green next to concrete reads as a different game,
 -- not as a ruin.
+--
+-- Budget: ~620 wall segments x 0.4 x ~4 pieces each, plus ~270 tufts and the
+-- mottle, lands around 1300 extra parts. Raise any of it and read the count the
+-- build prints before you ship — this rebuilds on every round.
 Dressing.OVERGROWN = {
-	wallColor = Color3.fromRGB(78, 92, 76),
+	-- Weathered stone, NOT moss. Barely off the maze's own grey, and warmer, so
+	-- it reads as older rather than as a different material.
+	wallColor = Color3.fromRGB(84, 86, 78),
 	wallMaterial = Enum.Material.Slate, -- older, rougher stone than the Concrete inward
-	-- Budget: ~620 wall segments x 0.32 x ~2.5 pieces each, plus the floor
-	-- patches, lands around 700 extra parts for the district. Raise these and
-	-- check the count before you ship it — this rebuilds on every round.
-	growthChance = 0.32,
-	strandsPerWall = NumberRange.new(1, 2),
+	growthChance = 0.4,
+	strandsPerWall = NumberRange.new(1, 3),
 	shootsPerWall = NumberRange.new(0, 2),
+	segmentsPerStrand = NumberRange.new(1, 2),
+	-- Thick. At 0.35 against a 40-stud wall the strands were threads and
+	-- vanished at any distance.
+	strandThickness = NumberRange.new(0.9, 2.2),
 	stemColors = {
 		Color3.fromRGB(56, 84, 48),
 		Color3.fromRGB(72, 100, 56),
@@ -82,13 +110,20 @@ Dressing.OVERGROWN = {
 		Color3.fromRGB(48, 68, 44),
 	},
 	growthMaterial = Enum.Material.Grass,
-	groundColor = Color3.fromRGB(66, 92, 54),
+	groundColor = Color3.fromRGB(72, 96, 58),
 	groundMaterial = Enum.Material.Grass,
-	-- Darker than the ground and only a little, so the clumps read as growth
-	-- thickening rather than as spilled paint.
-	patchCount = 180,
-	patchColor = Color3.fromRGB(54, 78, 44),
-	patchRadius = NumberRange.new(3, 9),
+	mottleCount = 40,
+	mottleColors = {
+		Color3.fromRGB(64, 86, 52),
+		Color3.fromRGB(82, 104, 62),
+		Color3.fromRGB(76, 88, 56),
+	},
+	mottleRadius = NumberRange.new(16, 46),
+	tuftClumps = 60,
+	tuftsPerClump = NumberRange.new(3, 6),
+	clumpSpread = 7,
+	tuftHeight = NumberRange.new(1.2, 3.4),
+	tuftWidth = NumberRange.new(0.5, 1.5),
 } :: Look
 
 -- Wall parts the maze carves. Anything else in the folder (the Floor disc, the
@@ -145,22 +180,35 @@ local function growOnWall(wall: BasePart, look: Look, rng: Random, parent: Insta
 		-- Hangs from the top, down a random part of the wall's height. Kept
 		-- clear of the very ends so a strand doesn't float in the gap where two
 		-- arc chords meet at an angle.
-		local length = halfHeight * rng:NextNumber(0.35, 1.15)
-		local thickness = rng:NextNumber(0.35, 0.9)
+		local total = halfHeight * rng:NextNumber(0.4, 1.3)
+		local thickness = randomIn(rng, look.strandThickness)
 		local alongX = rng:NextNumber(-halfLength * 0.85, halfLength * 0.85)
 		local side = if rng:NextNumber() < 0.5 then 1 else -1
 		local offZ = side * (faceZ + thickness / 2)
-		-- A slight lean and twist per strand. Dead-straight vines read as pipes.
-		local lean = CFrame.Angles(0, 0, rng:NextNumber(-0.12, 0.12))
+		local color = pick(rng, look.stemColors)
 
-		newGrowth(
-			Vector3.new(thickness, length, thickness),
-			wall.CFrame * CFrame.new(alongX, halfHeight - length / 2, offZ) * lean,
-			pick(rng, look.stemColors),
-			look.growthMaterial,
-			parent,
-			"Vine"
-		)
+		-- Walk down the face in segments, drifting sideways and re-leaning at
+		-- each one. One straight box is a pipe; two that meet at a slight angle
+		-- read as something that grew.
+		local segments = rng:NextInteger(look.segmentsPerStrand.Min, look.segmentsPerStrand.Max)
+		local segLength = total / segments
+		local y = halfHeight
+		local x = alongX
+		for _ = 1, segments do
+			local lean = rng:NextNumber(-0.16, 0.16)
+			newGrowth(
+				Vector3.new(thickness, segLength, thickness),
+				wall.CFrame * CFrame.new(x, y - segLength / 2, offZ) * CFrame.Angles(0, 0, lean),
+				color,
+				look.growthMaterial,
+				parent,
+				"Vine"
+			)
+			-- Overlap the joint slightly so the kink has no gap in it.
+			y -= segLength * 0.94
+			x += rng:NextNumber(-1.5, 1.5)
+			thickness *= rng:NextNumber(0.7, 0.95) -- tapers toward the tip
+		end
 	end
 
 	local shoots = rng:NextInteger(look.shootsPerWall.Min, look.shootsPerWall.Max)
@@ -168,8 +216,8 @@ local function growOnWall(wall: BasePart, look: Look, rng: Random, parent: Insta
 		-- Climbers: shorter, thinner, and leaning harder than the hanging
 		-- strands, so the two read as different growth rather than one effect
 		-- mirrored top and bottom.
-		local length = halfHeight * rng:NextNumber(0.2, 0.6)
-		local thickness = rng:NextNumber(0.25, 0.6)
+		local length = halfHeight * rng:NextNumber(0.25, 0.7)
+		local thickness = randomIn(rng, look.strandThickness) * 0.8
 		local alongX = rng:NextNumber(-halfLength * 0.85, halfLength * 0.85)
 		local side = if rng:NextNumber() < 0.5 then 1 else -1
 		local offZ = side * (faceZ + thickness / 2)
@@ -189,10 +237,10 @@ end
 -- A thin horizontal disc, built the way MazeService builds the maze floor: a
 -- Cylinder's axis is its local X, so it is rotated 90 degrees about Z to stand
 -- the axis upright and read as flat ground.
-local function newDisc(radius: number, topY: number, color: Color3, material: Enum.Material, parent: Instance, name: string): BasePart
+local function newDisc(x: number, z: number, radius: number, topY: number, color: Color3, material: Enum.Material, parent: Instance, name: string): BasePart
 	local disc = newGrowth(
 		Vector3.new(DISC_THICKNESS, radius * 2, radius * 2),
-		CFrame.new(0, topY - DISC_THICKNESS / 2, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame.new(x, topY - DISC_THICKNESS / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
 		color,
 		material,
 		parent,
@@ -221,38 +269,77 @@ end
 -- `FLOOR_COLOR` ever changes. Both discs sit a hair proud of the floor and a
 -- hair apart from each other, so no two faces are ever coplanar.
 local function layGround(mazeFolder: Instance, innerR: number, outerR: number, floorTopY: number, look: Look, parent: Instance)
-	newDisc(outerR, floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
+	newDisc(0, 0, outerR, floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
 
 	local floor = mazeFolder:FindFirstChild("Floor") :: BasePart?
 	if not floor then
 		return -- no floor to match; the grass disc alone is better than nothing
 	end
-	newDisc(innerR, floorTopY + 0.12, floor.Color, floor.Material, parent, "GroundCover")
+	newDisc(0, 0, innerR, floorTopY + 0.12, floor.Color, floor.Material, parent, "GroundCover")
 end
 
--- Darker clumps of growth scattered over that ground, so the district is not
--- one flat sheet of colour. Landing half under a wall is fine — that is where
--- growth collects anyway.
-local function scatterFloor(innerR: number, outerR: number, floorTopY: number, look: Look, rng: Random, parent: Instance)
-	for _ = 1, look.patchCount do
-		local radius = randomIn(rng, look.patchRadius)
-		-- sqrt keeps the scatter even by AREA. Sampling the radius uniformly
-		-- would crowd everything against the inner edge, where each ring of
-		-- radius covers far less ground.
-		local t = math.sqrt(rng:NextNumber())
-		local r = innerR + (outerR - innerR) * t
-		local a = rng:NextNumber(0, math.pi * 2)
+-- A random point in the district's ring.
+--
+-- sqrt keeps the scatter even by AREA. Sampling the radius uniformly would
+-- crowd everything against the inner edge, where each ring of radius covers far
+-- less ground.
+local function pointInRing(innerR: number, outerR: number, rng: Random): (number, number)
+	local t = math.sqrt(rng:NextNumber())
+	local r = innerR + (outerR - innerR) * t
+	local a = rng:NextNumber(0, math.pi * 2)
+	return r * math.cos(a), r * math.sin(a)
+end
 
-		-- Above the ground disc laid by layGround, not above the maze floor.
-		local patch = newGrowth(
-			Vector3.new(DISC_THICKNESS, radius * 2, radius * 2),
-			CFrame.new(r * math.cos(a), floorTopY + 0.18, r * math.sin(a)) * CFrame.Angles(0, 0, math.rad(90)),
-			look.patchColor,
-			look.growthMaterial,
+-- Broad, barely-different discs over the ground, so it is not one flat sheet of
+-- colour. Wide and close in tone on purpose: the first attempt used small dark
+-- discs, and they read as spilled paint rather than as uneven ground.
+local function mottleGround(innerR: number, outerR: number, floorTopY: number, look: Look, rng: Random, parent: Instance)
+	for _ = 1, look.mottleCount do
+		local x, z = pointInRing(innerR, outerR, rng)
+		newDisc(
+			x,
+			z,
+			randomIn(rng, look.mottleRadius),
+			floorTopY + 0.18,
+			pick(rng, look.mottleColors),
+			look.groundMaterial,
 			parent,
-			"GroundPatch"
+			"GroundMottle"
 		)
-		patch.Shape = Enum.PartType.Cylinder
+	end
+end
+
+-- Tufts of growth, in clumps.
+--
+-- These have HEIGHT, and that is the whole point. A flat disc lying on a flat
+-- floor is a stain whatever colour it is — only vertical geometry reads as
+-- something growing. They are clumped rather than evenly scattered for the same
+-- reason the walls only grow on some segments: even spacing reads as a texture,
+-- and clumps read as growth that took hold somewhere.
+--
+-- Landing half under a wall is fine. That is where growth collects anyway.
+local function scatterTufts(innerR: number, outerR: number, floorTopY: number, look: Look, rng: Random, parent: Instance)
+	for _ = 1, look.tuftClumps do
+		local cx, cz = pointInRing(innerR, outerR, rng)
+		local count = rng:NextInteger(look.tuftsPerClump.Min, look.tuftsPerClump.Max)
+		for _ = 1, count do
+			local height = randomIn(rng, look.tuftHeight)
+			local width = randomIn(rng, look.tuftWidth)
+			local x = cx + rng:NextNumber(-look.clumpSpread, look.clumpSpread)
+			local z = cz + rng:NextNumber(-look.clumpSpread, look.clumpSpread)
+			-- Random yaw and a slight tilt, so a clump is not a grid of
+			-- identical posts.
+			local spin = CFrame.Angles(rng:NextNumber(-0.14, 0.14), rng:NextNumber(0, math.pi * 2), rng:NextNumber(-0.14, 0.14))
+
+			newGrowth(
+				Vector3.new(width, height, width),
+				CFrame.new(x, floorTopY + height / 2, z) * spin,
+				pick(rng, look.stemColors),
+				look.growthMaterial,
+				parent,
+				"Tuft"
+			)
+		end
 	end
 end
 
@@ -301,7 +388,8 @@ function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR
 	end
 
 	layGround(mazeFolder, innerR, outerR, floorTopY, look, folder)
-	scatterFloor(innerR, outerR, floorTopY, look, rng, folder)
+	mottleGround(innerR, outerR, floorTopY, look, rng, folder)
+	scatterTufts(innerR, outerR, floorTopY, look, rng, folder)
 
 	-- Matches MazeService's own build line. The part count is the number worth
 	-- watching: this rebuilds every round, so a raised density shows up here
