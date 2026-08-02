@@ -101,6 +101,7 @@ never applies anything.
 | Item | Feature | Unlock | Rent | Effect |
 | ---- | ------- | ------ | ---- | ------ |
 | Sidearm | Gun | 0 | 60 | `HasGun = true`, `Ammo += 12` |
+| Silencer | Gun | 400 | 90 | `HasSilencer = true` — shots summon no hunters, clip plays at 0.35 volume |
 | Ammo box | Gun | 0 | 30 | `Ammo += 12` (repeatable) |
 | Floodlight | Flashlight | 250 | 40 | `HasFlashlight = true` |
 | Medkit | Health | 300 | 80 | `MedCharges += 1` (repeatable), spent with **H** |
@@ -108,6 +109,13 @@ never applies anything.
 Prices are a first pass and are meant to be retuned once a typical run's payout
 is known — a full district-3 sweep is 100, the vault alone is 500. See
 `Salvage/Constants.luau`.
+
+The **Silencer is deliberately the dearest thing on the shelf.** Every other
+item widens what you can do; that one deletes a cost. Firing normally trades a
+hunter's health for your position — every shot summons whoever hears it (see
+[Gun.md](Gun.md#summon-trigger)) — and silenced, that trade stops existing. A
+400 unlock keeps it out of a first round entirely, which is the point: it should
+read as something you graduate into, not a starting option.
 
 The **Map** from the extraction-loop plan is not built yet. It needs the maze
 graph on the client, and `MazeNav.cellPos`/`adj` are populated server-side only,

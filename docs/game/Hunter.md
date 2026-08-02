@@ -281,13 +281,15 @@ checkpoint — an invisible trap left at every kill site. The decision-loop
 
 ## Summon — retaliation has a cost
 
-Shooting a hunter (see [Gun.md](Gun.md)) alerts other hunters to the shooter's
+Firing a gun (see [Gun.md](Gun.md)) alerts other hunters to the shooter's
 position, mirroring the `EvacAlert` pattern above but distinct from it:
 
 - `GunService` (the producer, Gun feature) sets
   `workspace.HunterAlert` (an `os.clock()` timestamp) and
   `workspace.HunterAlertPos` (a `Vector3` — workspace attributes accept
-  `Vector3` directly) on a successful hit.
+  `Vector3` directly) on **every shot, hit or miss**. The noise is what
+  carries, so missing costs the same as connecting. A player who rented the
+  **Silencer** sets neither, and shoots without summoning anyone.
 - `HunterService` (the consumer, here) checks this branch **after** the
   `EvacAlert` branch and **before** the normal CHASE decision, each `REPATH`
   tick: any hunter within `SUMMON_RADIUS` (200 studs) of `HunterAlertPos`, for

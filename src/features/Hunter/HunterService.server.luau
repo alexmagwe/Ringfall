@@ -45,9 +45,10 @@ local RESPAWN_DELAY = 4
 local HEALTH_DRAIN = 25
 local BLAST_SOUND_ID = "" -- user may supply a boom sound later; silent until set
 
--- Summon: a hunter that gets shot alerts nearby hunters to the shooter's
--- position (GunService sets these attributes on a hit; this file only
--- consumes them, mirroring the existing EvacAlert idiom above).
+-- Summon: a gunshot alerts nearby hunters to the shooter's position, whether
+-- or not it hit anything — the noise is what carries (GunService sets these
+-- attributes on every unsilenced shot; this file only consumes them, mirroring
+-- the existing EvacAlert idiom above).
 local SUMMON_WINDOW = 5 -- seconds other hunters beeline to the alert
 local SUMMON_RADIUS = 200 -- only hunters within this of the alert respond
 local SIREN_SOUND_ID = "" -- user supplies; siren plays on the shot hunter
@@ -677,7 +678,7 @@ function HunterService.Start()
 						continue
 					end
 
-					-- Summon: a hunter just got shot, OR the vault alarm is
+					-- Summon: a shot was just fired, OR the vault alarm is
 					-- ringing (SalvageService sets AlarmActive and refreshes
 					-- these same attributes at the vault's position). Nearby
 					-- hunters (within SUMMON_RADIUS) beeline to the position for

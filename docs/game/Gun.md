@@ -226,19 +226,30 @@ Hunter's source, and Hunter never touches Gun's. See
 
 ## Summon trigger
 
-On a successful hunter hit, `GunService` sets two `workspace` attributes that
-`HunterService` polls (mirroring the existing `EvacAlert` idiom):
+On **every shot — hit or miss** — `GunService` sets two `workspace` attributes
+that `HunterService` polls (mirroring the existing `EvacAlert` idiom):
 
-- `workspace.HunterAlert` — `os.clock()` timestamp of the hit.
+- `workspace.HunterAlert` — `os.clock()` timestamp of the shot.
 - `workspace.HunterAlertPos` — the shooter's `HumanoidRootPart.Position`
   (`Vector3`; workspace attributes accept `Vector3` directly, no need to split
   into X/Z components).
 
 Any hunter within `SUMMON_RADIUS` (200 studs) of that position, for
-`SUMMON_WINDOW` (5s) after the hit, beelines toward it instead of its normal
-chase/search/wander decision. Retaliating has a cost. `HunterService` clears
-both attributes on every `MazeGeneration` rebuild so a stale alert can't carry
-into a new round.
+`SUMMON_WINDOW` (5s) after the shot, beelines toward it instead of its normal
+chase/search/wander decision. `HunterService` clears both attributes on every
+`MazeGeneration` rebuild so a stale alert can't carry into a new round.
+
+**This used to fire only on a landed hit**, which made missing free — the honest
+read of the Sidearm was "spray at range, it costs nothing unless you connect",
+while the shelf sold it as *"hunters hear every shot"*. A gunshot is loud
+whether or not it finds anything, and that noise is the price the whole weapon
+is balanced around: firing trades a hunter's health for your position.
+
+**The Silencer buys that price off.** A player carrying `HasSilencer` sets
+neither attribute, so they shoot without summoning anyone — and the shot clip
+plays at `SILENCED_VOLUME` (0.35 of the art's own). It keeps a report on
+purpose: you still need to know the trigger registered, and a genuinely silent
+gun reads as a broken one.
 
 ## Ammo economy
 
@@ -252,6 +263,23 @@ into a new round.
 | `HUNTER_HITS` | 10 | `HunterService.server.luau` — shots to kill a hunter |
 
 Ammo is found, never regenerates. A kill costs most of a full magazine.
+
+## Shelf items
+
+Registered from `src/features/Gun/Store.luau`, picked up by the Store feature's
+auto-discovery — Store never names Gun. See [Store.md](Store.md).
+
+| Item | Unlock | Rent | Effect |
+| ---- | ------ | ---- | ------ |
+| Sidearm | 0 | 60 | `HasGun` + 12 rounds |
+| Silencer | 400 | 90 | `HasSilencer` — shots summon nobody, clip plays at 0.35 volume |
+| Ammo box | 0 | 30 | +12 rounds, repeatable |
+
+The **Silencer is the priciest thing on the shelf** (above the Medkit's 300/80)
+because it removes the one cost that makes shooting a decision at all. Unarmed,
+firing trades a hunter's health for your position; silenced, that trade
+disappears. It should never be cheap, and `unlockCost = 400` keeps it off the
+first round entirely.
 
 ## Sound
 

@@ -32,6 +32,26 @@ return function(Store)
 		end,
 	})
 
+	-- The most expensive thing on the shelf, because it removes the one cost
+	-- that makes shooting a decision at all: every shot summons the hunters that
+	-- hear it, so firing trades a hunter's health for your position. Silenced,
+	-- that trade disappears — which is worth a lot and should never be cheap or
+	-- available on the first round. Priced above the Medkit (300/80) on purpose.
+	Store.registerItem({
+		id = "gun.silencer",
+		label = "Silencer",
+		description = "Shots stop summoning hunters, and the report is muffled.",
+		unlockCost = 400,
+		rentCost = 90,
+		order = 25, -- keeps the gun family contiguous: sidearm, ammo, silencer
+		apply = function(player: Player)
+			player:SetAttribute("HasSilencer", true)
+		end,
+		clear = function(player: Player)
+			player:SetAttribute("HasSilencer", nil)
+		end,
+	})
+
 	Store.registerItem({
 		id = "gun.ammo",
 		label = "Ammo box",

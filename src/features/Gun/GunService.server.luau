@@ -38,6 +38,10 @@ local SIREN_SOUND_ID = "" -- user supplies; siren plays on the hit hunter
 -- Handgun_Shoot / anything in that family depending on who built it.
 local SHOT_SOUND_NAMES = { "fire", "shoot", "shot", "gunshot", "blast" }
 local SHOT_SOUND_ID = "" -- user supplies; used ONLY when the art brought none
+-- Silenced shots keep a report — you still need to know the trigger registered,
+-- and a genuinely silent gun reads as a broken one. It's the summon that the
+-- Silencer actually buys off; this is the audible half of the same promise.
+local SILENCED_VOLUME = 0.35 -- fraction of the art's own volume
 
 -- Optional user art: a Tool named `GunModel` under ServerStorage, with a part
 -- named `Handle` (Roblox grips a Tool by that part). Missing => the code-built
@@ -365,6 +369,19 @@ local function shotSoundOf(tool: Tool): Sound?
 	return if count == 1 then only else nil
 end
 
+-- Fires the clip, quieter when the Silencer is rented. The art's own volume is
+-- the baseline and is remembered on the instance, so repeated silenced shots
+-- scale from it instead of compounding down to nothing.
+local function playShot(sound: Sound, silenced: boolean)
+	local base = sound:GetAttribute("BaseVolume")
+	if typeof(base) ~= "number" then
+		base = sound.Volume
+		sound:SetAttribute("BaseVolume", base)
+	end
+	sound.Volume = (base :: number) * (if silenced then SILENCED_VOLUME else 1)
+	sound:Play()
+end
+
 local function heldGun(player: Player): Tool?
 	local character = player.Character
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -493,6 +510,8 @@ function GunService.Start()
 
 		player:SetAttribute("Ammo", ammo - 1)
 
+		local silenced = player:GetAttribute("HasSilencer") == true
+
 		-- Before the raycast, and unconditionally: the bang belongs to pulling
 		-- the trigger, not to connecting. Played server-side so every player
 		-- hears it, which matters in a game where being heard is the cost of
@@ -501,7 +520,19 @@ function GunService.Start()
 		local tool = heldGun(player)
 		local sound = tool and shotSoundOf(tool)
 		if sound then
-			sound:Play()
+			playShot(sound, silenced)
+		end
+
+		-- Summon on EVERY shot, not just a landed one. The shelf has always sold
+		-- the Sidearm as "hunters hear every shot" and the code only alerted on a
+		-- hit, which made missing free — so the honest read of the item was
+		-- "spray at range, it costs nothing unless you connect". A gunshot is
+		-- loud whether or not it finds anything; that noise is the price the
+		-- whole weapon is balanced around, and the Silencer is the thing you buy
+		-- to stop paying it.
+		if not silenced then
+			workspace:SetAttribute("HunterAlert", os.clock())
+			workspace:SetAttribute("HunterAlertPos", root.Position)
 		end
 
 		local direction = payload.direction
@@ -528,11 +559,6 @@ function GunService.Start()
 		end
 
 		hunterHum:TakeDamage(1)
-
-		-- Summon: alert nearby hunters to the shooter's position. HunterService
-		-- (Phase 2) consumes these two workspace attributes.
-		workspace:SetAttribute("HunterAlert", os.clock())
-		workspace:SetAttribute("HunterAlertPos", root.Position)
 
 		if SIREN_SOUND_ID ~= "" then
 			local hunterModel = hunterHum.Parent
