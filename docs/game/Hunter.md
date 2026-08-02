@@ -76,9 +76,11 @@ from a level camera, which is the angle that matters in play.
 
 Each runs a loop every `REPATH` (0.7s) picking one of three states:
 
-- **Chase** — a player is sensed. Speed scales from `BASE_SPEED` (17, just above
-  walk) to `MAX_SPEED` (29) the deeper into the maze the target is, via
-  `SPEED_PER_BAND`. Steps cell-by-cell along `MazeNav` toward them.
+- **Chase** — a player is sensed. Speed scales from `BASE_SPEED` (18.7, just
+  above walk) to `MAX_SPEED` (31.9) the deeper into the maze the target is, via
+  `SPEED_PER_BAND` (1.1). Steps cell-by-cell along `MazeNav` toward them.
+  All three track player speed (`SprintController`'s walk 17.6 / sprint 28.6) —
+  move one and scale the others by the same factor or the chase changes feel.
 - **Search** — lock lost. Walks to the last cell the player was sensed in at
   `BASE_SPEED`, then gives up.
 - **Wander** — no lead. Picks random maze cells.
@@ -114,6 +116,32 @@ can't repel the living from beyond the grave.
 A chaser that reaches its claimed approach cell while still outside
 `FLANK_RANGE` simply holds position. That reads as cutting off an exit, and it
 resolves itself as soon as the target changes cell.
+
+### Hunters cannot enter the vault chamber
+
+The hub is a sanctuary — everything inside `SANCTUARY_RADIUS` (40; band 0 ends
+at 30, so that's a little margin past the hub wall). Two halves, same shape as
+the perimeter rule below:
+
+- **Targeting.** `outOfRound` returns true for any player inside it, so they're
+  invisible to `nearestSensed` and `nearestReachable`: no chase, no contact
+  drain, no catch. The run is a long committed descent, and arriving at the
+  bottom on 20 HP with three hunters on you is a coin-flip ending rather than a
+  climax — this is the breather at the turnaround. You still have to carry the
+  vault all the way back out with every hunter alerted.
+- **Containment.** Hunters stay physically out, not just harmless inside. One
+  pacing the dais next to an untouchable player reads as a bug, not as mercy.
+  `keepOutOfHub` redirects any destination that resolves to band 0 to the
+  nearest cell just outside it, so hunters ring the gates; and a hunter that
+  ends up inside anyway (momentum on a commit near the boundary, a blast shove)
+  does nothing but walk out, routed through the graph so it leaves by a gate.
+
+Containment is needed because three targets legitimately resolve to the hub:
+the **vault alarm** summons every hunter to the vault's position (which *is* the
+hub), the **evac alert** sends them at the centre, and a **flank pick** is a
+neighbour of the target's cell — so chasing someone in band 1 can claim band 0.
+Wander is handled at the source: `refreshNav` leaves band 0 out of the pool
+`randomCell` draws from.
 
 ### Hunters cannot leave the maze
 
@@ -181,6 +209,20 @@ been anchored in place since the initial catch) and:
 (`ServerScriptService.Features.Salvage.SalvageService`) for this — the same
 cross-feature server require `EscapeService` already uses for `MazeService`.
 See [Salvage.md](Salvage.md) for what those two dropped objects do.
+
+### Kit dies on catch too — but not from here
+
+`HunterService` clears **only** `Haul` and `HasVault`. Everything else you were
+carrying is stripped by the feature that granted it, each watching the `Caught`
+attribute independently:
+
+- `PickupsService` → `HasGun`, `Ammo`, `HasFlashlight`, `StaminaBonus`
+- `StoreService` → whatever was rented from the shelf this round
+
+That's why `HunterService` doesn't name Gun, Flashlight, Sprint or the Store —
+setting `Caught` is the whole of its involvement, and features subscribe to it.
+Adding a new kind of carried thing means one listener in its own feature and no
+edit here. See [Pickups.md](Pickups.md) for why catch stopped sparing found kit.
 
 Players with `Escaped`, `Caught`, or an unexpired `SafeUntil` attribute are
 ignored by both sensing and draining/catching.

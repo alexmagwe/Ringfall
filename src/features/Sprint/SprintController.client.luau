@@ -10,8 +10,8 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
-local WALK_SPEED = 16
-local SPRINT_SPEED = 26
+local WALK_SPEED = 17.6 -- 16 +10%
+local SPRINT_SPEED = 28.6 -- 26 +10%
 local MAX_STAMINA = 100
 local DRAIN = 26
 local REGEN = 16

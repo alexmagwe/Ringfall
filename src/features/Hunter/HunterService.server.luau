@@ -23,9 +23,11 @@ local HunterService = {}
 HunterService.Priority = 15
 
 local HUNTER_COUNT = 6
-local BASE_SPEED = 17 -- outer rings: just above walk (16), below sprint (26)
-local MAX_SPEED = 29 -- near the centre: harder as you go deeper
-local SPEED_PER_BAND = 1.0
+local BASE_SPEED = 18.7 -- outer rings: just above walk (17.6), below sprint (28.6)
+local MAX_SPEED = 31.9 -- near the centre: harder as you go deeper
+-- Scaled with the two above (all three +10% alongside player speed) so the
+-- band-to-speed ramp keeps the same shape rather than flattening.
+local SPEED_PER_BAND = 1.1
 local CATCH_DIST = 7
 local REPATH = 0.7
 local EVAC_ALERT_SECONDS = 4 -- window after any escape where every hunter sprints for the centre
@@ -286,14 +288,49 @@ end
 -- still have to carry the thing all the way back out, with every hunter alerted.
 local SANCTUARY_RADIUS = 40 -- band 0 (the hub) ends at 30; a little margin past it
 
+local function inSanctuaryPos(pos: Vector3): boolean
+	return Vector2.new(pos.X, pos.Z).Magnitude < SANCTUARY_RADIUS
+end
+
 local function inSanctuary(plr: Player): boolean
 	local char = plr.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not hrp then
 		return false
 	end
-	local p = (hrp :: BasePart).Position
-	return Vector2.new(p.X, p.Z).Magnitude < SANCTUARY_RADIUS
+	return inSanctuaryPos((hrp :: BasePart).Position)
+end
+
+-- Sanctuary containment: hunters stay OUT of the vault chamber, not just
+-- harmless inside it. Not sensing you while one paces the dais next to you
+-- doesn't read as a breather — it reads as a bug. So any destination that lands
+-- in the hub (band 0, the single centre cell) is redirected to the nearest cell
+-- just outside it, and the hunter rings the gate instead of walking in.
+--
+-- This has to exist because several targets legitimately resolve to the hub:
+-- the vault alarm summons every hunter to the vault's position, the evac alert
+-- sends them at the centre, and a flank pick can choose the hub as a neighbour
+-- of a band-1 cell. Returns nil when the hub has no open neighbour (never in a
+-- built maze, since the hub is reachable) — callers treat that as "no target".
+local function keepOutOfHub(key: number?, from: Vector3): number?
+	if not key or MazeNav.bandOf(key) > 0 then
+		return key
+	end
+	local best, bestDist = nil, math.huge
+	for _, nb in MazeNav.adj[key] or {} do
+		if MazeNav.bandOf(nb) == 0 then
+			continue
+		end
+		local c = MazeNav.cellPos[nb]
+		if not c then
+			continue
+		end
+		local d = (c - from).Magnitude
+		if d < bestDist then
+			best, bestDist = nb, d
+		end
+	end
+	return best
 end
 
 -- Beyond the perimeter wall: the staging room and its corridor. Hunters belong
@@ -341,6 +378,11 @@ function HunterService.Start()
 	local function refreshNav()
 		cellKeys = {}
 		for key in MazeNav.cellPos do
+			-- Band 0 is the sanctuary; it's never a wander destination (this pool
+			-- feeds randomCell only). See keepOutOfHub for the other routes in.
+			if MazeNav.bandOf(key) == 0 then
+				continue
+			end
 			table.insert(cellKeys, key)
 		end
 		maxBand = MazeNav.maxBand()
@@ -610,13 +652,26 @@ function HunterService.Start()
 						continue
 					end
 
+					-- Same containment for the sanctuary at the other end of the
+					-- maze: no destination sends a hunter in, but momentum on a
+					-- commit near the boundary, a blast shove, or a rebuild landing
+					-- one there still can. Walking out is all it does — stepToward
+					-- routes through the graph, so it leaves by a gate rather than
+					-- grinding along the inside of the hub wall.
+					if inSanctuaryPos(root.Position) then
+						setSpeed(BASE_SPEED)
+						stepToward(keepOutOfHub(MazeNav.nearestCell(root.Position), root.Position))
+						task.wait(nextRepath())
+						continue
+					end
+
 					local alert = workspace:GetAttribute("EvacAlert")
 					if typeof(alert) == "number" and os.clock() - alert < EVAC_ALERT_SECONDS then
 						-- An escape just happened: sprint for the centre so hunters
 						-- converge on the pad in shot for the escape cinematic,
 						-- arriving too late.
 						setSpeed(MAX_SPEED)
-						local centreCell = MazeNav.nearestCell(Vector3.zero)
+						local centreCell = keepOutOfHub(MazeNav.nearestCell(Vector3.zero), root.Position)
 						stepToward(centreCell)
 						task.wait(nextRepath())
 						continue
@@ -640,7 +695,9 @@ function HunterService.Start()
 						and (alarmActive or (root.Position - (sPos :: Vector3)).Magnitude < SUMMON_RADIUS)
 					then
 						setSpeed(MAX_SPEED)
-						stepToward(MazeNav.nearestCell(sPos :: Vector3))
+						-- The alarm's position IS the vault, i.e. the hub — every
+						-- summoned hunter converges on the gates around it instead.
+						stepToward(keepOutOfHub(MazeNav.nearestCell(sPos :: Vector3), root.Position))
 						task.wait(nextRepath())
 						continue
 					end
@@ -658,7 +715,10 @@ function HunterService.Start()
 							-- Reached its claimed approach cell but still too far to
 							-- commit? Hold it. That reads as cutting off an exit, and
 							-- it resolves itself the moment the target moves cell.
-							if stepToward(chaseCell(pcell, distToTarget)) and distToTarget < FLANK_RANGE then
+							-- keepOutOfHub: a flank pick is a NEIGHBOUR of the target's
+							-- cell, so chasing someone in band 1 can claim the hub.
+							local approach = keepOutOfHub(chaseCell(pcell, distToTarget), root.Position)
+							if stepToward(approach) and distToTarget < FLANK_RANGE then
 								hum:MoveTo(thrp.Position) -- committed: close in
 							end
 						end
