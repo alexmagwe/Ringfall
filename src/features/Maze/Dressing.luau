@@ -49,13 +49,18 @@ export type Look = {
 	stemColors: { Color3 }, -- one is drawn per strand, so no two runs match
 	growthMaterial: Enum.Material,
 
-	-- A flat count, not a per-wall multiplier. The outermost district carries
-	-- roughly 620 wall segments once the perimeter is chopped into chords, so
-	-- anything multiplied per wall runs to four figures of parts on a ring that
-	-- gets rebuilt every round.
-	floorPatchCount: number,
-	floorColor: Color3,
-	floorPatchRadius: NumberRange,
+	-- The district's ground: a solid ring laid over the maze floor.
+	groundColor: Color3,
+	groundMaterial: Enum.Material,
+
+	-- Darker clumps scattered on top of that ground, so it is not one flat
+	-- sheet of colour. A flat count, not a per-wall multiplier: the outermost
+	-- district carries roughly 620 wall segments once the perimeter is chopped
+	-- into chords, so anything multiplied per wall runs to four figures of parts
+	-- on a ring that gets rebuilt every round.
+	patchCount: number,
+	patchColor: Color3,
+	patchRadius: NumberRange,
 }
 
 -- The abandoned outer ring. Greens are desaturated and grey-leaning on
@@ -77,15 +82,23 @@ Dressing.OVERGROWN = {
 		Color3.fromRGB(48, 68, 44),
 	},
 	growthMaterial = Enum.Material.Grass,
-	floorPatchCount = 220,
-	floorColor = Color3.fromRGB(72, 104, 58),
-	floorPatchRadius = NumberRange.new(3, 9),
+	groundColor = Color3.fromRGB(66, 92, 54),
+	groundMaterial = Enum.Material.Grass,
+	-- Darker than the ground and only a little, so the clumps read as growth
+	-- thickening rather than as spilled paint.
+	patchCount = 180,
+	patchColor = Color3.fromRGB(54, 78, 44),
+	patchRadius = NumberRange.new(3, 9),
 } :: Look
 
 -- Wall parts the maze carves. Anything else in the folder (the Floor disc, the
 -- EscapeZone that EscapeService parents in here) must be left alone — the Floor
 -- spans every district, so repainting it would repaint the whole map.
 local WALL_NAMES = { Arc = true, Spoke = true, Perimeter = true }
+
+-- Every ground disc is this thin. They stack a few hundredths apart, so no two
+-- faces are ever coplanar and nothing z-fights.
+local DISC_THICKNESS = 0.2
 
 local function pick<T>(rng: Random, list: { T }): T
 	return list[rng:NextInteger(1, #list)]
@@ -173,17 +186,56 @@ local function growOnWall(wall: BasePart, look: Look, rng: Random, parent: Insta
 	end
 end
 
--- Flat discs of growth over the floor of the district.
+-- A thin horizontal disc, built the way MazeService builds the maze floor: a
+-- Cylinder's axis is its local X, so it is rotated 90 degrees about Z to stand
+-- the axis upright and read as flat ground.
+local function newDisc(radius: number, topY: number, color: Color3, material: Enum.Material, parent: Instance, name: string): BasePart
+	local disc = newGrowth(
+		Vector3.new(DISC_THICKNESS, radius * 2, radius * 2),
+		CFrame.new(0, topY - DISC_THICKNESS / 2, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		color,
+		material,
+		parent,
+		name
+	)
+	disc.Shape = Enum.PartType.Cylinder
+	return disc
+end
+
+-- Lays the district's ground as a RING, using two solid discs rather than a
+-- ring of segments.
 --
--- Scattered rather than laid as one continuous ring: the maze floor is a single
--- disc spanning every district, so a solid annulus over part of it would need
--- to be exactly coplanar and would z-fight along every seam. Patches sit a hair
--- proud of the floor instead, and they read as growth breaking through rather
--- than as a recoloured tile. Landing half under a wall is fine — that is where
+-- The obvious build — an annulus chopped into wedge quads — is the wrong one
+-- here. Neighbouring quads meet coplanar along every radial seam, which
+-- z-fights, and a chord across a 48-sector arc at this radius misses the true
+-- curve by over a stud. Two concentric discs have no seams at all:
+--
+--   1. a grass disc out to `outerR`, which also covers everything inside it;
+--   2. a disc of the ORIGINAL floor back out to `innerR`, which hides the part
+--      of the grass that reached into the inner districts.
+--
+-- What is left visible is an exact ring. It costs two parts instead of ~150.
+--
+-- The cover disc reads its colour and material off the real floor rather than
+-- naming them, so the inner districts cannot drift out of step with it if
+-- `FLOOR_COLOR` ever changes. Both discs sit a hair proud of the floor and a
+-- hair apart from each other, so no two faces are ever coplanar.
+local function layGround(mazeFolder: Instance, innerR: number, outerR: number, floorTopY: number, look: Look, parent: Instance)
+	newDisc(outerR, floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
+
+	local floor = mazeFolder:FindFirstChild("Floor") :: BasePart?
+	if not floor then
+		return -- no floor to match; the grass disc alone is better than nothing
+	end
+	newDisc(innerR, floorTopY + 0.12, floor.Color, floor.Material, parent, "GroundCover")
+end
+
+-- Darker clumps of growth scattered over that ground, so the district is not
+-- one flat sheet of colour. Landing half under a wall is fine — that is where
 -- growth collects anyway.
-local function scatterFloor(innerR: number, outerR: number, count: number, look: Look, rng: Random, parent: Instance)
-	for _ = 1, count do
-		local radius = randomIn(rng, look.floorPatchRadius)
+local function scatterFloor(innerR: number, outerR: number, floorTopY: number, look: Look, rng: Random, parent: Instance)
+	for _ = 1, look.patchCount do
+		local radius = randomIn(rng, look.patchRadius)
 		-- sqrt keeps the scatter even by AREA. Sampling the radius uniformly
 		-- would crowd everything against the inner edge, where each ring of
 		-- radius covers far less ground.
@@ -191,26 +243,30 @@ local function scatterFloor(innerR: number, outerR: number, count: number, look:
 		local r = innerR + (outerR - innerR) * t
 		local a = rng:NextNumber(0, math.pi * 2)
 
+		-- Above the ground disc laid by layGround, not above the maze floor.
 		local patch = newGrowth(
-			Vector3.new(0.2, radius * 2, radius * 2),
-			CFrame.new(r * math.cos(a), 0.08, r * math.sin(a)) * CFrame.Angles(0, 0, math.rad(90)),
-			look.floorColor,
+			Vector3.new(DISC_THICKNESS, radius * 2, radius * 2),
+			CFrame.new(r * math.cos(a), floorTopY + 0.18, r * math.sin(a)) * CFrame.Angles(0, 0, math.rad(90)),
+			look.patchColor,
 			look.growthMaterial,
 			parent,
-			"FloorGrowth"
+			"GroundPatch"
 		)
 		patch.Shape = Enum.PartType.Cylinder
 	end
 end
 
--- Dresses every wall between `innerR` and `outerR`, and scatters floor growth
--- across the same ring. Call it after the geometry exists and before the nav
--- graph publishes; it reads the walls it finds and adds only scenery, so it can
--- never change what was carved.
+-- Dresses every wall between `innerR` and `outerR`, lays the district's ground
+-- over the same ring, and scatters clumps on top. Call it after the geometry
+-- exists and before the nav graph publishes; it reads the walls it finds and
+-- adds only scenery, so it can never change what was carved.
+--
+-- `floorTopY` is the walking surface of the maze floor. Everything this lays
+-- sits just above it.
 --
 -- `rng` is the build's own seeded Random, so a seed reproduces its dressing
 -- exactly like it reproduces its layout.
-function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR: number, rng: Random)
+function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR: number, floorTopY: number, rng: Random)
 	local folder = Instance.new("Folder")
 	folder.Name = "Dressing"
 	folder.Parent = mazeFolder
@@ -244,7 +300,8 @@ function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR
 		growOnWall(wall, look, rng, folder)
 	end
 
-	scatterFloor(innerR, outerR, look.floorPatchCount, look, rng, folder)
+	layGround(mazeFolder, innerR, outerR, floorTopY, look, folder)
+	scatterFloor(innerR, outerR, floorTopY, look, rng, folder)
 
 	-- Matches MazeService's own build line. The part count is the number worth
 	-- watching: this rebuilds every round, so a raised density shows up here

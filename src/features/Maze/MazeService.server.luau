@@ -786,7 +786,7 @@ function MazeService.rebuild(seed: number)
 	-- Derived from DISTRICT_BANDS rather than hardcoding band 10, so retuning
 	-- the district split can't leave the dressing covering the wrong ring.
 	local outerBands = DISTRICT_BANDS[#DISTRICT_BANDS]
-	Dressing.apply(mazeFolder, Dressing.OVERGROWN, RADII[outerBands[1]], RADII[outerBands[2] + 1], rng)
+	Dressing.apply(mazeFolder, Dressing.OVERGROWN, RADII[outerBands[1]], RADII[outerBands[2] + 1], FLOOR_Y, rng)
 
 	-- Staging room + corridor: outside the perimeter, opening through the cut
 	-- made above. Also positions SpawnLocation (inside the room, facing back

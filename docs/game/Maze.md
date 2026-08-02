@@ -136,9 +136,9 @@ Gates are consumed by:
 ## District dressing
 
 `src/features/Maze/Dressing.luau` gives a district a look of its own. Today only
-the **outermost district is dressed: an overgrown ruin.** Vines hang off the
-walls, shoots climb out of their bases, growth spreads across the floor, and the
-stone is mossy Slate instead of clean Concrete.
+the **outermost district is dressed: an overgrown ruin.** The ground is grass,
+vines hang off the walls, shoots climb out of their bases, darker clumps thicken
+across the floor, and the stone is mossy Slate instead of clean Concrete.
 
 **This is a navigation fix as much as an art pass.** The maze carves itself in
 one wall colour on one floor disc, so every cell in a district was identical to
@@ -176,11 +176,35 @@ give the thick strands query-visible colliders and name them into `canSee`.
 opens a passage the carve never made, which can strand a gate and break the
 sealed-district rule. Decay is painted on; the collider stays whole.
 
+### The ground is a ring made of two discs
+
+The maze floor is **one disc spanning the whole map**, so a district's ground has
+to be laid over part of it. The obvious build — an annulus chopped into wedge
+quads — is the wrong one: neighbouring quads meet coplanar along every radial
+seam and z-fight, and a chord across a 48-sector arc at this radius misses the
+true curve by over a stud.
+
+`layGround` uses two concentric discs instead, which have no seams at all:
+
+1. a **grass disc** out to `outerR`, which also covers everything inside it;
+2. a disc of the **original floor** back out to `innerR`, which hides the part
+   of the grass that reached into the inner districts.
+
+What stays visible is an exact ring, for two parts instead of ~150. The cover
+disc reads its colour and material off the real `Floor` part rather than naming
+them, so the inner districts cannot drift out of step with it if `FLOOR_COLOR`
+changes. Every disc is `DISC_THICKNESS` (0.2) thin and they stack a few
+hundredths apart, so no two faces are ever coplanar.
+
+The discs are `CanCollide = false` like everything else here. Players walk on
+the real floor and stand 0.05 studs deep in the grass, which reads as short
+growth rather than as clipping.
+
 ### Budget
 
 The outermost district holds roughly 620 wall segments once the perimeter is
 chopped into chords. The `Look` table is therefore tuned to add ~700 parts, and
-`floorPatchCount` is a **flat count, not a per-wall multiplier** — anything
+`patchCount` is a **flat count, not a per-wall multiplier** — anything
 multiplied per wall runs to four figures on a ring that rebuilds every round.
 `Dressing.apply` prints the wall and part counts on every build, so a raised
 density shows up in the output before it shows up as a frame-rate complaint.
