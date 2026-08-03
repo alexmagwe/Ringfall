@@ -52,15 +52,26 @@ mesh origin sits mid-frame, that floats the whole gun above the fist, pointing
 the right way but held nowhere near the grip. `Tool.Grip` is the correction, and
 free-model Tools routinely ship with it left at identity.
 
-**The fix is a `Grip` attribute of type `CFrame` on the art in Studio.** It's
-deliberately the only mechanism for authored Tools: a `Grip` marker under the
-Handle *looks* like the answer, but the pistol this was built against ships an
-`Attachment` named `Grip` at `(0, -0.325, 0)` with a -90° yaw, and neither half
-was usable — the yaw turned a correctly-pointing gun a quarter-turn off, and the
-offset named the wrong axis entirely (the working value is `0.35` on the
-Handle's **X**). A marker records whatever the original scripts needed, which is
-not the same question as "where does a hand go". Guessing from it produced a
-worse result than doing nothing, so nothing is what happens.
+**The fix is a `Grip` attribute of type `CFrame` on the art in Studio.** It is
+the one source of truth, and it overrides everything else.
+
+**The art's own `Tool.Grip` is not trusted.** The pistol in `ServerStorage.Gun`
+carries an authored Grip of `(0, -0.325, 0)` with a -90° yaw, which turns the
+gun a quarter-turn and floats it off the fist; its `Grip` attachment holds the
+same value, because the author kept the two in sync. A non-identity `Tool.Grip`
+is therefore not evidence that the author solved this problem — only that they
+solved *theirs*, with their own rig and their own scripts, both of which are
+stripped on the way in. `DEFAULT_ART_GRIP` is applied over it unconditionally.
+
+Two earlier attempts failed and are worth not repeating:
+
+- **Reading a `Grip` marker under the Handle.** It looked like the answer and it
+  was a coincidence: the marker's value *is* the authored `Tool.Grip`, so
+  copying it changed nothing while appearing to.
+- **Applying the default only when `Tool.Grip` was identity**, on the theory
+  that identity means "the author never set one". This art disproves it — the
+  authored value is non-identity and wrong, so the default never fired and the
+  gun silently reverted to floating.
 
 **Tuning it takes seconds and no restarts.** `GunService` watches the art's
 `Grip` attribute and re-applies it to every held gun the moment it changes, and
@@ -94,10 +105,9 @@ and left alone.
 
 The `Grip` attribute overrides all of it, loose art included.
 
-**`DEFAULT_ART_GRIP` = `CFrame.new(0.35, 0, 0)`** is applied to any authored
-Tool whose own `Grip` is identity — identity means the author never set one,
-not that they wanted the Handle's mesh origin in the palm. The value is tuned
-against the pistol currently in `ServerStorage.Gun`.
+**`DEFAULT_ART_GRIP` = `CFrame.new(0.35, 0, 0)`** is applied to every authored
+Tool, over whatever grip the art came with. The value is tuned against the
+pistol currently in `ServerStorage.Gun`. The `Grip` attribute still wins.
 
 A per-model number in code is the wrong home for a grip, and it's there anyway
 for a specific reason: the attribute lives in the `.rbxl`, which this repo
