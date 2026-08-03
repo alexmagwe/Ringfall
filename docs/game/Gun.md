@@ -66,6 +66,15 @@ That value was measured, not guessed. Solving `Handle = hand * C0 *
 Grip:Inverse()` for the pose that points the barrel down the character's
 `LookVector` returns −85° of yaw mid-animation, so −90° at rest.
 
+**The offset must then be re-tuned for that rotation, and this is the trap.**
+`Grip`'s translation applies in the frame *after* its rotation, so it runs along
+the **Handle's** own axes, not the hand's: X slides the gun along its barrel, Y
+raises it. The same `0.35` that read as a sensible sideways nudge with no
+rotation became `0.35` of *backward slide* once the yaw existed, which buried
+the grip inside the fist. `-0.3` seats the fist at the rear of the frame, and
+`0.45` drops the gun so the magazine hangs below the hand rather than resting on
+top of it.
+
 **`DEFAULT_ART_GRIP` is applied over whatever `Tool.Grip` the art came with.**
 Three attempts got here, and each failure is worth not repeating:
 
@@ -112,7 +121,7 @@ and left alone.
 
 The `Grip` attribute overrides all of it, loose art included.
 
-**`DEFAULT_ART_GRIP` = `CFrame.new(0.35, 0, 0) * CFrame.Angles(0, -90°, 0)`** is
+**`DEFAULT_ART_GRIP` = `CFrame.new(-0.3, 0.45, 0) * CFrame.Angles(0, -90°, 0)`** is
 applied to every authored Tool, over whatever grip the art came with. The value is tuned against the
 pistol currently in `ServerStorage.Gun`. The `Grip` attribute still wins.
 

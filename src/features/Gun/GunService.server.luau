@@ -53,8 +53,8 @@ local GUN_TOOL_NAME = "Blaster"
 -- size, and one four times too big reads as a bug rather than as a gun.
 local GUN_TARGET_LENGTH = 3
 -- Where the hand sits on art that doesn't say. Tuned against the pistol in
--- ServerStorage by dragging the live `Grip` attribute until it sat right: 0.35
--- along the Handle's own X.
+-- ServerStorage, by setting the live `Grip` attribute and reading the result off
+-- a screenshot until the fist sat at the rear of the frame.
 --
 -- THE YAW IS LOAD-BEARING. Do not simplify this to a plain offset.
 --
@@ -66,6 +66,15 @@ local GUN_TARGET_LENGTH = 3
 -- Measured, not guessed. Solving Handle = hand * C0 * Grip:Inverse() for the
 -- pose that points the barrel down the character's LookVector gives -85 degrees
 -- of yaw mid-animation, i.e. -90 at rest.
+--
+-- The OFFSET then has to be re-tuned for that rotation, and this is the trap:
+-- Grip's translation applies in the frame AFTER its rotation, so it runs along
+-- the HANDLE's own axes, not the hand's. X slides the gun along its barrel and
+-- Y raises it. The same 0.35 that read as a sensible sideways nudge with no
+-- rotation became 0.35 of backward slide once the yaw existed, which buried the
+-- grip inside the fist. -0.3 seats the fist at the rear of the frame; 0.45
+-- drops the gun so the magazine hangs below the hand instead of resting on top
+-- of it.
 --
 -- APPLIED OVER whatever `Tool.Grip` the art came with, which took two wrong
 -- turns to arrive at. The first version only applied when `Tool.Grip` was
@@ -83,7 +92,7 @@ local GUN_TARGET_LENGTH = 3
 -- the attribute lives in the .rbxl, which this repo does not track: a fresh
 -- clone, or a value tuned during a playtest and lost on stop, would otherwise
 -- put the gun back in the wrong pose with no clue why.
-local DEFAULT_ART_GRIP = CFrame.new(0.35, 0, 0) * CFrame.Angles(0, math.rad(-90), 0)
+local DEFAULT_ART_GRIP = CFrame.new(-0.3, 0.45, 0) * CFrame.Angles(0, math.rad(-90), 0)
 
 local lastShot: { [Player]: number } = {}
 
