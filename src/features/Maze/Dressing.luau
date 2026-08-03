@@ -7,7 +7,7 @@
 -- remember, and identical cells give you none: you cannot tell an arc you
 -- already searched from one you did not.
 --
--- OUTERMOST DISTRICT = OVERGROWN RUIN. Vines hang off the walls, shoots climb
+-- OUTERMOST DISTRICT = OVERGROWN RUIN. MIDDLE DISTRICT = FLOODED INDUSTRY. Vines hang off the walls, shoots climb
 -- out of their bases, growth spreads over the floor, and the stone is mossy and
 -- weathered rather than clean concrete. Players spawn here, so it sets the
 -- first impression, and it gives the run a gradient: a ruin at the edge, intact
@@ -53,6 +53,9 @@ export type Look = {
 	rubbleChance: number,
 	rubblePerWall: NumberRange,
 	rubbleColors: { Color3 },
+	-- Yaw only, no pitch or roll. Fallen stone tumbles; a crate that has been
+	-- set down does not, and tipping one reads as debris rather than as cargo.
+	rubbleUpright: boolean?,
 
 	-- Fraction of wall segments that grow anything at all. Below 1 the district
 	-- reads as patchy and organic; at 1 every segment looks the same, which is
@@ -68,10 +71,28 @@ export type Look = {
 
 	stemColors: { Color3 }, -- one is drawn per strand, so no two runs match
 	growthMaterial: Enum.Material,
+	-- Multiplier on `growthChance` at the district's INNER edge, ramping to 1 at
+	-- its outer edge. This is what stops the three districts reading as three
+	-- rooms: growth thins as you descend instead of stopping dead at a gate, so
+	-- the maze reads as one world that changes. 1 (or nil) means no falloff.
+	growthFalloff: number?,
+
+	-- Pipes and conduits: horizontal runs along a wall, with the occasional drop
+	-- to the floor. Same idea as a vine and deliberately the same generator
+	-- shape, because a pipe IS a straight, rigid, metal vine — what separates
+	-- them is thickness, colour, material, and the fact that a pipe does not
+	-- kink.
+	pipeChance: number?,
+	pipesPerWall: NumberRange?,
+	pipeThickness: NumberRange?,
+	pipeColors: { Color3 }?,
+	pipeMaterial: Enum.Material?,
 
 	-- The district's ground: a solid ring laid over the maze floor.
 	groundColor: Color3,
 	groundMaterial: Enum.Material,
+	-- Above 0 the ground reads as standing water rather than as a surface.
+	groundTransparency: number?,
 
 	-- Tufts with actual height, in clumps. A flat disc on a flat floor is a
 	-- stain no matter what colour it is — only vertical geometry reads as
@@ -144,6 +165,67 @@ Dressing.OVERGROWN = {
 	tuftWidth = NumberRange.new(0.5, 1.5),
 } :: Look
 
+-- The working middle: flooded industry. The ruin outside is what the maze
+-- BECAME; this is what it was FOR. Pipes run the length of the walls, crates sit
+-- where someone set them down, and standing water covers the floor.
+--
+-- Growth does not stop at the gate — it thins. `growthFalloff` ramps the vine
+-- density from almost nothing at the inner edge up toward the outer one, so the
+-- overgrowth outside bleeds a little way in and the two districts read as one
+-- world rather than two rooms with a door between them.
+--
+-- Budget: ~350 wall segments here (120 cells, and only band 7 is 24-sector), so
+-- the same per-wall chances cost roughly half what they do outside.
+Dressing.FLOODED = {
+	-- Colder and cleaner than the ruin: same family of grey, less warmth in it,
+	-- and Concrete rather than the weathered Slate outside.
+	wallColor = Color3.fromRGB(62, 68, 78),
+	wallMaterial = Enum.Material.Concrete,
+	wallJitter = 0.05,
+	-- Crates, not fallen stone: fewer, blockier, and set down flat.
+	rubbleChance = 0.4,
+	rubblePerWall = NumberRange.new(1, 2),
+	rubbleColors = {
+		Color3.fromRGB(96, 82, 58),
+		Color3.fromRGB(78, 70, 56),
+		Color3.fromRGB(64, 74, 82),
+	},
+	rubbleUpright = true,
+	-- Thin growth, thinning further as you descend.
+	growthChance = 0.22,
+	growthFalloff = 0.15,
+	strandsPerWall = NumberRange.new(1, 2),
+	shootsPerWall = NumberRange.new(0, 1),
+	segmentsPerStrand = NumberRange.new(1, 2),
+	strandThickness = NumberRange.new(0.7, 1.6),
+	stemColors = {
+		Color3.fromRGB(58, 78, 54),
+		Color3.fromRGB(70, 88, 60),
+		Color3.fromRGB(46, 62, 46),
+	},
+	growthMaterial = Enum.Material.Grass,
+	pipeChance = 0.5,
+	pipesPerWall = NumberRange.new(1, 3),
+	pipeThickness = NumberRange.new(0.5, 1.4),
+	pipeColors = {
+		Color3.fromRGB(104, 96, 84),
+		Color3.fromRGB(78, 84, 90),
+		Color3.fromRGB(120, 92, 62), -- one rusted run per few, so they are not a set
+	},
+	pipeMaterial = Enum.Material.Metal,
+	-- Standing water. Transparent enough to read as shallow, dark enough that the
+	-- floor below it goes cold — the ruin outside is warm green, this is not.
+	groundColor = Color3.fromRGB(56, 76, 88),
+	groundMaterial = Enum.Material.SmoothPlastic,
+	groundTransparency = 0.35,
+	-- Almost no loose growth: it collects against the crates instead.
+	tuftClumps = 14,
+	tuftsPerClump = NumberRange.new(2, 4),
+	clumpSpread = 6,
+	tuftHeight = NumberRange.new(0.8, 2.2),
+	tuftWidth = NumberRange.new(0.4, 1.1),
+} :: Look
+
 -- Wall parts the maze carves. Anything else in the folder (the Floor disc, the
 -- EscapeZone that EscapeService parents in here) must be left alone — the Floor
 -- spans every district, so repainting it would repaint the whole map.
@@ -152,6 +234,9 @@ local WALL_NAMES = { Arc = true, Spoke = true, Perimeter = true }
 -- Every ground disc is this thin. They stack a few hundredths apart, so no two
 -- faces are ever coplanar and nothing z-fights.
 local DISC_THICKNESS = 0.2
+
+-- Default when a Look asks for pipes without saying how many.
+local ONE = NumberRange.new(1, 1)
 
 local function pick<T>(rng: Random, list: { T }): T
 	return list[rng:NextInteger(1, #list)]
@@ -219,8 +304,10 @@ local function rubbleAtBase(wall: BasePart, look: Look, rng: Random, parent: Ins
 		local side = if rng:NextNumber() < 0.5 then 1 else -1
 		-- Half the depth sits inside the wall, so there is no gap to see down.
 		local offZ = side * (faceZ + depth * 0.25)
-		-- Tipped every which way. Axis-aligned boxes read as boxes.
-		local tumble = CFrame.Angles(rng:NextNumber(-0.35, 0.35), rng:NextNumber(0, math.pi * 2), rng:NextNumber(-0.35, 0.35))
+		-- Tipped every which way. Axis-aligned boxes read as boxes — except when
+		-- the pieces are meant to be cargo, which someone set down flat.
+		local tilt = if look.rubbleUpright then 0 else 0.35
+		local tumble = CFrame.Angles(rng:NextNumber(-tilt, tilt), rng:NextNumber(0, math.pi * 2), rng:NextNumber(-tilt, tilt))
 
 		newGrowth(
 			Vector3.new(width, height, depth),
@@ -245,6 +332,60 @@ local function rubbleAtBase(wall: BasePart, look: Look, rng: Random, parent: Ins
 				look.growthMaterial,
 				parent,
 				"Tuft"
+			)
+		end
+	end
+end
+
+-- Runs pipes along a wall face, with the occasional drop to the floor.
+--
+-- Deliberately the same shape as growOnWall, because a pipe IS a rigid metal
+-- vine: the difference is that it runs HORIZONTALLY, holds one thickness for its
+-- whole length, and never kinks. Those three things are the whole reason a
+-- corridor reads as built rather than as overgrown.
+local function pipesOnWall(wall: BasePart, look: Look, rng: Random, parent: Instance)
+	local thickness = look.pipeThickness
+	local colors = look.pipeColors
+	if not thickness or not colors or #colors == 0 then
+		return
+	end
+
+	local halfLength = wall.Size.X / 2
+	local halfHeight = wall.Size.Y / 2
+	local faceZ = wall.Size.Z / 2
+	local material = look.pipeMaterial or Enum.Material.Metal
+
+	local count = rng:NextInteger((look.pipesPerWall or ONE).Min, (look.pipesPerWall or ONE).Max)
+	for _ = 1, count do
+		local gauge = randomIn(rng, thickness)
+		local color = pick(rng, colors)
+		local side = if rng:NextNumber() < 0.5 then 1 else -1
+		local offZ = side * (faceZ + gauge / 2)
+		-- Runs the FULL length of the segment. A pipe that stops halfway along a
+		-- wall reads as a broken prop; one that leaves at both ends reads as part
+		-- of a system that continues past what you can see.
+		local height = rng:NextNumber(-halfHeight * 0.45, halfHeight * 0.75)
+
+		newGrowth(
+			Vector3.new(halfLength * 2, gauge, gauge),
+			wall.CFrame * CFrame.new(0, height, offZ),
+			color,
+			material,
+			parent,
+			"Pipe"
+		)
+
+		-- A drop to the floor every so often, so the runs are not all parallel
+		-- lines at the same height.
+		if rng:NextNumber() < 0.35 then
+			local dropLength = height + halfHeight
+			newGrowth(
+				Vector3.new(gauge * 0.8, dropLength, gauge * 0.8),
+				wall.CFrame * CFrame.new(rng:NextNumber(-halfLength * 0.8, halfLength * 0.8), height - dropLength / 2, offZ),
+				color,
+				material,
+				parent,
+				"Conduit"
 			)
 		end
 	end
@@ -360,7 +501,8 @@ end
 -- `FLOOR_COLOR` ever changes. Both discs sit a hair proud of the floor and a
 -- hair apart from each other, so no two faces are ever coplanar.
 local function layGround(mazeFolder: Instance, innerR: number, outerR: number, floorTopY: number, look: Look, parent: Instance)
-	newDisc(0, 0, outerR, floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
+	local ground = newDisc(0, 0, outerR, floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
+	ground.Transparency = look.groundTransparency or 0
 
 	local floor = mazeFolder:FindFirstChild("Floor") :: BasePart?
 	if not floor then
@@ -446,6 +588,7 @@ function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR
 		table.insert(walls, child)
 	end
 
+	local span = math.max(outerR - innerR, 1)
 	for _, wall in walls do
 		if look.wallColor then
 			wall.Color = jitter(look.wallColor, look.wallJitter, rng)
@@ -459,7 +602,19 @@ function Dressing.apply(mazeFolder: Instance, look: Look, innerR: number, outerR
 		if rng:NextNumber() < look.rubbleChance then
 			rubbleAtBase(wall, look, rng, folder)
 		end
-		if rng:NextNumber() > look.growthChance then
+		if look.pipeChance and rng:NextNumber() < look.pipeChance then
+			pipesOnWall(wall, look, rng, folder)
+		end
+
+		-- Growth thins with depth across the district's own width, rather than
+		-- holding one density and then stopping dead at a gate. Three districts
+		-- each at a flat density read as three rooms; a ramp reads as one world
+		-- that changes as you go down.
+		local p = wall.Position
+		local depth = (Vector2.new(p.X, p.Z).Magnitude - innerR) / span
+		local falloff = look.growthFalloff or 1
+		local chance = look.growthChance * (falloff + (1 - falloff) * math.clamp(depth, 0, 1))
+		if rng:NextNumber() > chance then
 			continue
 		end
 		growOnWall(wall, look, rng, folder)

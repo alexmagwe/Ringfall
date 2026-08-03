@@ -225,6 +225,15 @@ end
 -- {1,0} gate boundary is what connects it).
 -- Owned by MazeNav so districtOf and the carve can never disagree.
 local DISTRICT_BANDS = MazeNav.DISTRICT_BANDS
+
+-- One entry per district index, matching DISTRICT_BANDS: 1 = inner, up to
+-- #DISTRICT_BANDS = outermost. nil leaves a district as carved, which is what
+-- the inner one is for now — the vault's own chamber already carries the centre.
+local DISTRICT_LOOKS = {
+	nil, -- 1: INNER, undressed
+	Dressing.FLOODED, -- 2: MIDDLE
+	Dressing.OVERGROWN, -- 3: OUTER
+}
 -- Sealed boundaries between adjacent districts, as { outerBand, innerBand }.
 -- Derived, never hand-written: each district's single gate sits at its innermost
 -- band, crossing into the band below. Keeps the gates pinned to DISTRICT_BANDS
@@ -832,8 +841,21 @@ function MazeService.rebuild(seed: number)
 	--
 	-- Derived from DISTRICT_BANDS rather than hardcoding band 10, so retuning
 	-- the district split can't leave the dressing covering the wrong ring.
-	local outerBands = DISTRICT_BANDS[#DISTRICT_BANDS]
-	Dressing.apply(mazeFolder, Dressing.OVERGROWN, RADII[outerBands[1]], RADII[outerBands[2] + 1], FLOOR_Y, rng)
+	--
+	-- OUTERMOST FIRST, then inward, and the order matters. Each district lays its
+	-- ground as two discs — its own surface out to `outerR`, then a disc of the
+	-- original floor back out to `innerR` to hide the overspill (see
+	-- Dressing.layGround). A district laid later must therefore sit ABOVE the one
+	-- outside it, which is what the rising `FLOOR_Y + n` does. The steps are
+	-- fractions of a stud, so nothing about them is walkable or visible as a lip.
+	for index = #DISTRICT_BANDS, 1, -1 do
+		local look = DISTRICT_LOOKS[index]
+		if look then
+			local bands = DISTRICT_BANDS[index]
+			local layer = (#DISTRICT_BANDS - index) * 0.2
+			Dressing.apply(mazeFolder, look, RADII[bands[1]], RADII[bands[2] + 1], FLOOR_Y + layer, rng)
+		end
+	end
 
 	-- Staging room + corridor: outside the perimeter, opening through the cut
 	-- made above. Also positions SpawnLocation (inside the room, facing back

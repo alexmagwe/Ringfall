@@ -135,8 +135,41 @@ Gates are consumed by:
 
 ## District dressing
 
-`src/features/Maze/Dressing.luau` gives a district a look of its own. Today only
-the **outermost district is dressed: an overgrown ruin.** The ground is grass,
+`src/features/Maze/Dressing.luau` gives a district a look of its own. Two are
+dressed today, declared in `DISTRICT_LOOKS` in `MazeService`:
+
+| District | Bands | Look | Reads as |
+| -------- | ----- | ---- | -------- |
+| OUTER | 10–12 | `Dressing.OVERGROWN` | An abandoned ruin — what the maze *became* |
+| MIDDLE | 7–9 | `Dressing.FLOODED` | Working industry — what it was *for* |
+| INNER | 1–6 | none | As carved; the vault's chamber carries the centre |
+
+**The districts are laid outermost-first, and the order matters.** Each one lays
+its ground as two discs — its own surface out to `outerR`, then a disc of the
+original floor back out to `innerR` to hide the overspill. A district laid later
+must therefore sit *above* the one outside it, which is what the rising
+`FLOOR_Y + n` layer offset does. The steps are fractions of a stud, so none of it
+is walkable or visible as a lip.
+
+**Growth thins with depth rather than stopping at a gate.** `growthFalloff` is a
+multiplier applied to `growthChance` at a district's inner edge, ramping to 1 at
+its outer edge. Three districts each at a flat density read as three rooms; a
+ramp reads as one world that changes as you descend. The middle district runs
+`0.15`, so the overgrowth outside bleeds a little way in and then gives out.
+
+**A pipe is a rigid metal vine, and shares its generator.** `pipesOnWall` is
+`growOnWall` with three differences that are the whole reason a corridor reads as
+built rather than overgrown: it runs *horizontally*, it holds one thickness for
+its whole length, and it never kinks. Pipes span the full wall segment on
+purpose — one that stops halfway reads as a broken prop, one that leaves at both
+ends reads as part of a system continuing past what you can see.
+
+`rubbleUpright` turns the rubble generator into crates: yaw only, no pitch or
+roll. Fallen stone tumbles; cargo someone set down does not.
+
+### The overgrown outer ring
+
+The ground is grass,
 thick vines hang off the walls, shoots climb out of their bases, tufts clump
 across the floor, and the stone is weathered Slate instead of clean Concrete.
 
