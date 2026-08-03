@@ -48,7 +48,21 @@ Part). `buildPickup` normalizes all three into a Model container, then:
   (the spider-`Animate` hazard); a pickup is pure decoration and needs none.
 - anchors + de-collides + `Massless`es every part, so it stays rigid regardless
   of the art's welds, never blocks a player, and — nested in the container, not a
-  direct child of `workspace` — a **Tool can't auto-equip on touch**.
+  direct child of `workspace`.
+
+**A `Tool` template is unwrapped into a plain Model, and that is load-bearing.**
+`Tool` inherits from `Model` in Roblox, so `clone:IsA("Model")` is true for one:
+the nesting branch never ran, and the pickup went into the world *still a Tool*.
+Roblox auto-equips a Tool the moment a character touches its `Handle` — a Handle
+this code has just **anchored** — so the player was welded to an immovable part,
+then dropped when the touch handler destroyed it a beat later. It was reported
+twice as "I picked it up and fell", once fatally.
+
+Nesting a Tool inside a Model does **not** fix it: the auto-equip fires for any
+`Workspace` descendant, not only a direct child. The only reliable fix is for no
+Tool to exist, so its children are moved into a Model and the Tool is discarded.
+`ServerStorage.PickupModels` currently holds three Tools, so this is the normal
+case rather than an edge one.
 - floats it at the cell centre, spins it (`Model:PivotTo`, no `PrimaryPart`
   needed), and wraps it in an occluded `Highlight` (kind-colored outline) so it's
   findable in the fog without recoloring the mesh or glowing through walls.

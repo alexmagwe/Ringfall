@@ -100,12 +100,33 @@ local function buildPickup(kind: string, modelName: string?, color: Color3, amou
 	local pickup: Instance
 
 	if template then
-		-- Always end up with a Model container, whatever shape the art is: a Model
-		-- clone is used directly; a Tool or bare BasePart is nested in a fresh one.
-		-- Uniform container => uniform spin (Model:PivotTo) and one touch/attr host.
+		-- Always end up with a plain Model container, whatever shape the art is: a
+		-- Model is used directly, a bare BasePart is nested, and a Tool is
+		-- unwrapped. Uniform container => uniform spin (Model:PivotTo) and one
+		-- touch/attribute host.
+		--
+		-- THE TOOL CASE IS LOAD-BEARING, not tidiness.
+		--
+		-- `Tool` inherits from `Model` in Roblox, so `clone:IsA("Model")` is TRUE
+		-- for one. The nesting branch never ran, the pickup went into the world
+		-- still a Tool, and Roblox auto-equips a Tool the moment a character
+		-- touches its Handle — a Handle this code has just ANCHORED. The player
+		-- was welded to an immovable part and dropped when the touch handler
+		-- destroyed it a beat later. Reported twice as "I picked it up and fell".
+		--
+		-- Nesting a Tool inside a Model does not fix it: the auto-equip fires for
+		-- any Workspace descendant, not only a direct child of it. The only
+		-- reliable fix is for no Tool to exist, so the children are moved into a
+		-- Model and the Tool itself is thrown away.
 		local clone = template:Clone()
 		local model: Model
-		if clone:IsA("Model") then
+		if clone:IsA("Tool") then
+			model = Instance.new("Model")
+			for _, child in clone:GetChildren() do
+				child.Parent = model
+			end
+			clone:Destroy()
+		elseif clone:IsA("Model") then
 			model = clone
 		else
 			model = Instance.new("Model")
@@ -124,7 +145,8 @@ local function buildPickup(kind: string, modelName: string?, color: Color3, amou
 
 		-- Anchor everything so the whole thing stays rigid in place regardless of
 		-- the art's welds, never blocks a player, and (nested, not a direct child
-		-- of workspace) a Tool can't auto-equip on touch.
+		-- of workspace) it can never be picked up as a Tool — the unwrap above is
+		-- what guarantees that, not this nesting.
 		for _, d in model:GetDescendants() do
 			if d:IsA("BasePart") then
 				d.Anchored = true

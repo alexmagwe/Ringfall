@@ -131,12 +131,25 @@ local function buildObject(look: Look, position: Vector3, parent: Instance): Ins
 		return piece
 	end
 
-	-- Always end up with a Model container, whatever shape the art is: a Model
-	-- clone is used directly; a Tool or bare BasePart is nested in a fresh one.
+	-- Always end up with a plain Model container, whatever shape the art is: a
+	-- Model is used directly, a bare BasePart is nested, and a Tool is unwrapped.
 	-- Uniform container => uniform pivot, one attribute host, one grab.
+	--
+	-- The Tool case is load-bearing. `Tool` inherits from `Model`, so
+	-- the Model branch below would keep it a Tool, and Roblox auto-equips a Tool
+	-- in Workspace the moment a character touches its Handle — a Handle this
+	-- code has just ANCHORED, which welds the player to an immovable part until
+	-- the grab destroys it and drops them. See PickupsService.buildPickup, which
+	-- had the identical bug and where it was first caught.
 	local clone = template:Clone()
 	local model: Model
-	if clone:IsA("Model") then
+	if clone:IsA("Tool") then
+		model = Instance.new("Model")
+		for _, child in clone:GetChildren() do
+			child.Parent = model
+		end
+		clone:Destroy()
+	elseif clone:IsA("Model") then
 		model = clone
 	else
 		model = Instance.new("Model")
@@ -155,7 +168,8 @@ local function buildObject(look: Look, position: Vector3, parent: Instance): Ins
 
 	-- Anchored so it hangs where it's placed regardless of the art's welds,
 	-- non-colliding so it never blocks a corridor, and nested in a Model (not a
-	-- direct child of workspace) so a Tool can't auto-equip on touch.
+	-- direct child of workspace). Tool auto-equip is prevented by the unwrap
+	-- above, not by this nesting — see the note there.
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Anchored = true
@@ -264,25 +278,59 @@ end
 -- Binds Vault.Touched. Called once at Start and again on every
 -- MazeGeneration, because the Vault lives in workspace.Maze and
 -- `mazeFolder:ClearAllChildren()` destroys it every rebuild.
--- Strips the Vault back to a spent husk: every part dark and matte, its light
--- gone, its always-on-top outline dulled so it stops advertising itself as the
--- objective from across the maze. The objective has moved — the compass now
--- points at whoever is carrying it (see CompassController).
-local function emptyVault(vault: Instance)
+-- Takes the Vault off the dais: dark and inert first, then shrinking into the
+-- pedestal over VAULT_SINK_TIME before it's destroyed.
+--
+-- It used to stay put as a dimmed husk, which read as loot worth grabbing —
+-- especially once real art landed, since a dark bag on a pedestal looks like a
+-- dark bag on a pedestal. The only feedback that it was spent was walking into
+-- it and having nothing happen. Removing it is unambiguous, and the alarm plus
+-- every compass swinging already carry the "someone got here first" signal that
+-- the husk was there to send.
+local function collapseVault(vault: Instance)
+	-- Dim and de-touch first, so the last half-second reads as something spent
+	-- being swallowed rather than the prize itself shrinking away still lit.
 	for _, d in vault:GetDescendants() do
 		if d:IsA("BasePart") then
+			d.CanTouch = false
 			d.Material = Enum.Material.Slate
 			d.Color = Color3.fromRGB(20, 20, 22)
 		elseif d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
 			d:Destroy()
 		elseif d:IsA("Highlight") then
-			d.OutlineColor = Color3.fromRGB(70, 70, 76)
+			d:Destroy()
 		end
 	end
-	if vault:IsA("BasePart") then
-		vault.Material = Enum.Material.Slate
-		vault.Color = Color3.fromRGB(20, 20, 22)
+
+	if not vault:IsA("Model") then
+		vault:Destroy()
+		return
 	end
+
+	local model = vault :: Model
+	task.spawn(function()
+		local startPivot = model:GetPivot()
+		-- Relative to the CURRENT scale, not 1: buildVault fits user art to
+		-- VAULT_TARGET_SIZE, so a bare ScaleTo(VAULT_SINK_SCALE) would snap the
+		-- model back to its authored size before shrinking it.
+		local startScale = model:GetScale()
+		local startedAt = os.clock()
+
+		while model.Parent do
+			local t = (os.clock() - startedAt) / Constants.VAULT_SINK_TIME
+			if t >= 1 then
+				break
+			end
+			-- Ease out: most of the drop lands early, so it reads as the dais
+			-- swallowing it rather than a slow deflate.
+			local eased = 1 - (1 - t) * (1 - t)
+			model:ScaleTo(startScale * (1 + (Constants.VAULT_SINK_SCALE - 1) * eased))
+			model:PivotTo(startPivot - Vector3.new(0, Constants.VAULT_SINK_DEPTH * eased, 0))
+			task.wait()
+		end
+
+		model:Destroy()
+	end)
 end
 
 -- Binds the Vault's one interaction. Called once at Start and again on every
@@ -305,7 +353,7 @@ local function bindVault()
 		workspace:SetAttribute("VaultTaken", true)
 		player:SetAttribute("HasVault", true)
 		workspace:SetAttribute("AlarmActive", true)
-		emptyVault(vault)
+		collapseVault(vault)
 	end)
 end
 

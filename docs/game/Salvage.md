@@ -108,11 +108,27 @@ before any yield):
 1. `workspace:SetAttribute("VaultTaken", true)`.
 2. `player:SetAttribute("HasVault", true)`.
 3. `workspace:SetAttribute("AlarmActive", true)`.
-4. `emptyVault` strips it to a husk — every part `Slate` and near-black, lights
-   destroyed, and the `AlwaysOnTop` outline dulled to grey so it stops
-   advertising itself as the objective from across the maze. The objective has
-   moved: the compass now points at whoever is carrying it. No further behaviour
-   on that instance — the next rebuild rebinds a fresh one.
+4. `collapseVault` takes it off the dais. Every part goes `Slate` and near-black
+   with `CanTouch = false`, its lights and its `AlwaysOnTop` outline are
+   destroyed, and then it **shrinks into the pedestal** over `VAULT_SINK_TIME`
+   (0.5s, eased out so most of the drop lands early) before being destroyed.
+
+   It used to stay put as a dimmed husk. That read as loot worth grabbing —
+   especially with real art, since a dark bag on a pedestal looks like a dark bag
+   on a pedestal — and the only feedback that it was spent was walking into it
+   and having nothing happen. The alarm and every compass swinging already carry
+   the "someone got here first" signal the husk was there to send.
+
+   Two things the collapse has to get right:
+   - **Scale is relative to the model's current scale, not 1.** `buildVault` fits
+     user art to `VAULT_TARGET_SIZE`, so a bare `ScaleTo(VAULT_SINK_SCALE)` would
+     snap the model back to its authored size before shrinking it.
+   - **`VaultController` stops driving it** once `VaultTaken` is set. It
+     re-pivots every Heartbeat from a rest pose captured at bind, so it would
+     snap the model back out of the dais each frame and the collapse would never
+     visibly happen.
+
+   The next rebuild rebinds a fresh Vault.
 
 **The alarm reuses the existing gunshot summon — no new hunter pathing.**
 `HunterService` already beelines every hunter within `SUMMON_RADIUS` to
@@ -289,8 +305,13 @@ What `buildObject` does to a cloned template, and **why each step matters**:
 - **Anchors every `BasePart`,** so the object hangs where it's placed regardless
   of the art's own welds or unanchored children.
 - **`CanCollide = false`, `Massless = true`,** so a piece never blocks a
-  corridor, and nesting inside a `Model` (not a direct child of `workspace`)
-  stops a `Tool` auto-equipping on touch.
+  corridor.
+- **Unwraps a `Tool` template into a plain Model.** `Tool` inherits from `Model`
+  in Roblox, so a Tool used as art stayed a Tool in the world — and Roblox
+  auto-equips one the moment a character touches its `Handle`, welding the player
+  to a part this code has just *anchored*. Nesting does not prevent it; only
+  having no Tool does. See
+  [Pickups.md](Pickups.md#studio-assets), where it was caught.
 - **Re-applies the tier glow.** This is the one that bites: a realistic dark
   prop in an unlit maze is invisible, and the district colour *is* the value
   tier — it's how a player decides from down a corridor whether a piece is worth
