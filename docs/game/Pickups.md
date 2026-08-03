@@ -1,14 +1,25 @@
 # Pickups
 
-Scavenged items scattered around the maze each round: a **gun**, **ammo**, a
+Scavenged items scattered around the maze each round: **ammo**, a
 **flashlight**, a **stamina upgrade**, and **MedKits**. Grabbing one is a
 one-touch grant of a **per-run player attribute** — nothing here ever reaches
 PlayerData. A fresh round wipes all of it and re-scatters to new cells.
 
-**The compass used to live here too — it doesn't anymore.** It's standard
-equipment now, not something you have to find; see
-[Salvage.md](Salvage.md#the-compass-is-standard-equipment) for where it moved
-and why.
+**Two things that used to live here don't anymore.**
+
+- **The compass** is standard equipment, not something you have to find; see
+  [Salvage.md](Salvage.md#the-compass-is-standard-equipment).
+- **The gun** is rented from the staging shelf (see [Store.md](Store.md)).
+  Scattering one made the Sidearm a convenience rather than a decision — why
+  pay 60 when the maze hands you the same attribute for free? Being armed is now
+  something you commit to before the round starts, which is what the whole
+  rent-and-lose-it economy is built on.
+
+  **Ammo still scatters, and that is the point.** A magazine you didn't pay for
+  extends a weapon you did. `PickupsService.grant` still handles
+  `kind = "Gun"` and `GUN_START_AMMO` still exists: that is the mechanism, not
+  the content. Re-scattering guns is one line back in `SPAWNS`, and gutting the
+  grant would turn that line into a silent no-op instead.
 
 Files:
 
@@ -25,10 +36,9 @@ Files:
 with the art for each kind inside. The art's instance name is **not** matched to
 the kind — instead each `SPAWNS` entry in `Constants.luau` carries a `model`
 field naming the child to clone, so art can be named anything (current mapping:
-Gun→`GatlingLaser`, Ammo→`Battery`, Stamina→`StaminaBoost`). The `Compass`
-model under `ServerStorage.PickupModels` is unused now that the compass is
-standard equipment (see [Salvage.md](Salvage.md)) — left in place, it's the
-user's.
+Ammo→`Battery`, Stamina→`StaminaBoost`). Two models in
+`ServerStorage.PickupModels` are unused now — `Compass` and `GatlingLaser` —
+since neither is scattered any more. Left in place; they're the user's.
 
 The art can be a **Model, a Tool, or a single BasePart** (Union / MeshPart /
 Part). `buildPickup` normalizes all three into a Model container, then:
@@ -52,9 +62,27 @@ so a multi-part model can't double-grant.
 
 ## The per-run attributes
 
-Set by `PickupsService` on pickup, read wherever they're consumed, cleared by
-`EscapeService` at round end (not on ordinary respawn — a caught player
-keeps their loot within the same run).
+Set by `PickupsService` on pickup, read wherever they're consumed, and cleared
+in **two** places:
+
+- **On catch** — `PickupsService` watches the `Caught` attribute and strips
+  `HasGun` / `Ammo` / `HasFlashlight` / `StaminaBonus`. Everything you were
+  carrying dies with you.
+- **At round end** — `EscapeService.resetRunAttributes`, which clears the same
+  set plus everything else per-run.
+
+Catch used to spare them, on the reasoning that a caught player keeps their loot
+within the same run. That broke once the Store shipped, because rented kit
+writes the *same attributes*: what you lost then depended on where it came from
+— the same gun kept if found, stripped if rented — and a rented item's `clear()`
+took found kit with it, so renting one 30-cash ammo box meant a catch wiped your
+whole stock while a player who rented nothing kept all of theirs. Spending cash
+made your losses bigger. One rule for everything removes that, and it gives a
+catch a cost inside the run instead of only at round end.
+
+The feature that grants an attribute is the feature that clears it, so
+`StoreService` does the same for rented items off the same signal. Both nil-ing
+the same attribute is harmless.
 
 | Attribute | Type | Meaning | Consumed by |
 | --------- | ---- | ------- | ----------- |

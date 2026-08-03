@@ -1,9 +1,16 @@
 # Gun
 
-Scavenged retaliation: once a player has picked up the Gun pickup (see
-[Pickups.md](Pickups.md)), clicking damages hunters. 10 hits kills one. Ammo is
-scarce and never regenerates — hiding stays the primary verb; the gun is a
-rare, costly "I have to fight now" option.
+Rented retaliation: once a player carries `HasGun`, clicking damages hunters. 10
+hits kills one. Ammo is scarce and never regenerates — hiding stays the primary
+verb; the gun is a costly "I have to fight now" option.
+
+**The gun is not scattered in the maze.** It comes from the **Sidearm** on the
+staging shelf (60 rent, see [Store.md](Store.md)) and dies with you like
+everything else carried. It used to be a pickup, which made the Sidearm a
+convenience rather than a decision — why rent one when the maze hands you the
+same attribute for free? Ammo *is* still scattered (see
+[Pickups.md](Pickups.md)), and is worth finding precisely because the weapon is
+rented: a magazine you didn't pay for extends one you did.
 
 Files:
 
@@ -285,8 +292,8 @@ gun reads as a broken one.
 
 | Constant | Value | Where |
 | -------- | ----- | ----- |
-| `GUN_START_AMMO` | 12 | `Pickups/Constants.luau` — granted when the Gun pickup is grabbed |
-| Ammo pickup amount | 6 | `Pickups/Constants.luau` — 4 scattered per round |
+| `GUN_START_AMMO` | 12 | `Pickups/Constants.luau` — part of the `Gun` grant, unused while the gun isn't scattered |
+| Ammo pickup amount | 6 | `Pickups/Constants.luau` — 4 scattered per round, the only free ammunition |
 | `GUN_RANGE` | 300 studs | `GunService.server.luau` (mirrored as `AIM_RANGE` in the controller) |
 | `FIRE_COOLDOWN` | 0.2s | `GunService.server.luau`, server-enforced |
 | `ASSIST_RADIUS` | 1.5 studs | `GunService.server.luau` — the miss-retry sphere |

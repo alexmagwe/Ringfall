@@ -3,10 +3,11 @@
 return {
 	FOLDER = "Pickups", -- workspace folder the feature owns
 	-- Optional real models the user places in Studio, one child per kind named
-	-- "Gun" / "Ammo" / "Stamina" / "Flashlight" / "Emergency MedKit". A neon ball
-	-- stands in per kind that has no model, so the feature works before any art
-	-- exists. (The Compass is standard equipment now, not a pickup — see
-	-- docs/game/Salvage.md — so it's no longer in SPAWNS.)
+	-- "Ammo" / "Stamina" / "Flashlight" / "Emergency MedKit". A neon ball stands
+	-- in per kind that has no model, so the feature works before any art exists.
+	-- Two things that were once pickups no longer appear in SPAWNS: the Compass
+	-- is standard equipment (see docs/game/Salvage.md), and the gun is rented
+	-- from the shelf (see below). Their art can stay in the folder unused.
 	MODELS_FOLDER = "PickupModels", -- under ServerStorage
 	FLOAT_Y = 3, -- studs above the floor cell centre
 	SPIN_DPS = 60, -- visual spin, client-side
@@ -18,12 +19,26 @@ return {
 	-- PickupsService.scatter for how they're applied (falls back to the
 	-- unconstrained pool if the constraint leaves no candidate cells, so a kind
 	-- never fails to place).
+	-- The GUN IS NOT SCATTERED. It used to be — one `GatlingLaser` per round — and
+	-- that made the shelf's Sidearm a convenience rather than a decision: why
+	-- rent one for 60 when the maze hands you the same attribute for free? Being
+	-- armed is now something you pay for before the round starts, which is what
+	-- the whole rent-and-lose-it economy is built around.
+	--
+	-- `PickupsService.grant` still handles `kind = "Gun"`, and `GUN_START_AMMO`
+	-- is still here. That is the mechanism, not the content: re-scattering guns
+	-- is one line back in this table, and gutting the grant would turn that line
+	-- into a silent no-op instead.
 	SPAWNS = {
-		{ kind = "Gun", model = "GatlingLaser", count = 1, color = Color3.fromRGB(230, 180, 60) },
+		-- Ammo stays scattered. It is worth finding precisely BECAUSE the gun is
+		-- rented — a magazine you did not pay for extends a weapon you did.
 		{ kind = "Ammo", model = "Ammo", count = 4, color = Color3.fromRGB(240, 130, 60), amount = 6 },
 		{ kind = "Stamina", model = "StaminaBoost", count = 1, color = Color3.fromRGB(120, 230, 150), amount = 50 },
 		{ kind = "Flashlight", model = "Flashlight", count = 1, color = Color3.fromRGB(255, 245, 200) },
 		{ kind = "HealthKit", model = "Emergency MedKit", count = 3, color = Color3.fromRGB(230, 70, 70), amount = 50 },
 	},
-	GUN_START_AMMO = 12, -- the Gun pickup also grants this much ammo
+	-- Granted alongside `HasGun` by `grant`. Unreferenced by SPAWNS today, since
+	-- the gun is not scattered — kept because it is half of that grant, not a
+	-- spawn setting.
+	GUN_START_AMMO = 12,
 }

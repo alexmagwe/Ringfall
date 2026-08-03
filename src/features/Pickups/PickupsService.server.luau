@@ -1,5 +1,6 @@
 --!strict
--- Scavenged pickups: gun, ammo, flashlight, stamina upgrade, MedKits.
+-- Scavenged pickups: ammo, flashlight, stamina upgrade, MedKits. (The gun is
+-- rented from the staging shelf, not scattered — see Constants.SPAWNS.)
 -- Scattered at random maze cells every round; touching one grants a per-run
 -- PLAYER ATTRIBUTE (never PlayerData — this is ephemeral, cleared by
 -- EscapeService at round end). The compass is standard equipment now, not a
@@ -113,7 +114,7 @@ local function buildPickup(kind: string, modelName: string?, color: Color3, amou
 			clone.Parent = model
 		end
 
-		-- Strip scripts. A free-model Tool (the GatlingLaser) can ship with its own
+		-- Strip scripts. A free-model Tool can ship with its own
 		-- server Scripts that would otherwise run the moment it enters the world —
 		-- the same free-model hazard as the spider's Animate script. A pickup is
 		-- pure decoration; it needs none of them.
@@ -259,6 +260,43 @@ function PickupsService.Start()
 
 	scatter()
 	workspace:GetAttributeChangedSignal("MazeGeneration"):Connect(scatter)
+
+	-- Everything you were carrying dies with you, kit included.
+	--
+	-- Pickup-granted kit used to survive a catch (only round end cleared it),
+	-- which made what you lost depend on where it came from: the same gun was
+	-- kept if you found it and stripped if you rented it. Worse, the two write
+	-- the SAME attributes, so a rented item's clear() took found kit with it —
+	-- rent one 30-cash ammo box and a catch wiped your whole stock, while a
+	-- player who rented nothing kept all of it. Spending cash made your losses
+	-- bigger, which is backwards.
+	--
+	-- One rule for everything removes the asymmetry, and it makes a catch cost
+	-- something inside the run rather than only at round end. This feature grants
+	-- these attributes, so this feature clears them; StoreService does the same
+	-- for what it rented, off the same signal. Both nil-ing the same attribute is
+	-- harmless.
+	local function clearCarriedKit(player: Player)
+		player:SetAttribute("HasGun", nil)
+		player:SetAttribute("Ammo", nil)
+		player:SetAttribute("HasFlashlight", nil)
+		player:SetAttribute("StaminaBonus", nil)
+	end
+
+	local function bindCatch(player: Player)
+		player:GetAttributeChangedSignal("Caught"):Connect(function()
+			-- Caught flips back to false 1.4s later, at the checkpoint teleport.
+			if player:GetAttribute("Caught") ~= true then
+				return
+			end
+			clearCarriedKit(player)
+		end)
+	end
+
+	Players.PlayerAdded:Connect(bindCatch)
+	for _, player in Players:GetPlayers() do
+		bindCatch(player)
+	end
 end
 
 return PickupsService
