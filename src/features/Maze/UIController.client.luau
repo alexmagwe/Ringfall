@@ -173,6 +173,14 @@ function UIController.Start()
 	screen.ResetOnSpawn = false
 	screen.IgnoreGuiInset = true
 	screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	-- Above every feature's own ScreenGui. ZIndex only orders within one
+	-- ScreenGui, so without this the shelf window drew straight through the
+	-- summary board whenever a round ended with it open — the board dimmed the
+	-- world behind it and the shelf sat on top of the dim regardless.
+	--
+	-- Below the catch cutscene (HunterController, 100), which is the one thing
+	-- that should cover this.
+	screen.DisplayOrder = 90
 	screen.Parent = playerGui
 
 	local root = ReactRoblox.createRoot(screen)

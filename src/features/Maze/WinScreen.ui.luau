@@ -23,17 +23,29 @@ local React = require(ReplicatedStorage.Packages.React)
 local Summary = require(ReplicatedStorage.Features.Maze.Summary)
 local ui = require(ReplicatedStorage.Shared.Boil).ui
 
-local PANEL_SIZE = UDim2.fromOffset(560, 560)
-local TITLE_TEXT_SIZE = 56
-local WINNER_TEXT_SIZE = 28
+local PANEL_SIZE = UDim2.fromOffset(520, 560)
+local PANEL_PADDING = 28
+
+-- One size per ROLE, with real gaps between them. The first version ran every
+-- line at 18-28px, centred, in three near-identical greys — eight lines with no
+-- reason to look at any of them first. Sizes here step 64 / 34 / 22 / 16 / 13 so
+-- the eye lands on the take, then the outcome, then the detail.
+local HERO_TEXT_SIZE = 64
+local TITLE_TEXT_SIZE = 34
 local ROW_TEXT_SIZE = 22
-local ROW_HEIGHT = 30
-local WINNER_COLOR = Color3.fromRGB(120, 230, 150)
+local CAPTION_TEXT_SIZE = 16
+local HEADING_TEXT_SIZE = 13
+local ROW_HEIGHT = 28
+local GAP = 6 -- between lines within a group
+local GROUP_GAP = 22 -- extra height under a group's last line, to separate groups
+
+-- Colour carries hierarchy too: exactly ONE thing is coloured (the take), the
+-- rest is a grey ramp from bright rows down to dim headings.
+local CASH_COLOR = Color3.fromRGB(126, 232, 156)
 local YOU_COLOR = Color3.fromRGB(255, 220, 130)
-local ROW_COLOR = Color3.fromRGB(200, 208, 216)
-local SECTION_COLOR = Color3.fromRGB(150, 162, 176)
-local CASH_COLOR = Color3.fromRGB(120, 230, 150)
-local SECTION_TEXT_SIZE = 18
+local ROW_COLOR = Color3.fromRGB(206, 214, 222)
+local MUTED_COLOR = Color3.fromRGB(146, 158, 172)
+local HEADING_COLOR = Color3.fromRGB(112, 124, 138)
 
 export type HaulRow = { name: string, haul: number }
 
@@ -56,89 +68,109 @@ type Props = {
 }
 
 return function(props: Props)
-	-- Highest haul first; the scoreboard reads as a ranking.
-	local rows = table.clone(props.hauls)
-	table.sort(rows, function(a, b)
-		return a.haul > b.haul
-	end)
-
-	-- One children table: react-lua's createElement takes children as a single
-	-- keyed table, so the rows are merged in here rather than passed separately.
-	local children: { [string]: any } = {
-		UIListLayout = React.createElement("UIListLayout", {
-			Padding = UDim.new(0, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			FillDirection = Enum.FillDirection.Vertical,
-		}),
-
-		Title = React.createElement(ui.Text, {
-			text = "VAULT EXTRACTED",
-			textSize = TITLE_TEXT_SIZE,
-			weight = Enum.FontWeight.Heavy,
-			shadow = true,
-			size = UDim2.new(1, 0, 0, TITLE_TEXT_SIZE + 10),
-			layoutOrder = 1,
-		}),
-
-		Winner = React.createElement(ui.Text, {
-			text = props.winnerName .. " got out with it",
-			textSize = WINNER_TEXT_SIZE,
-			weight = Enum.FontWeight.Bold,
-			color = WINNER_COLOR,
-			size = UDim2.new(1, 0, 0, WINNER_TEXT_SIZE + 8),
-			layoutOrder = 2,
-		}),
-
-		Banked = React.createElement(ui.Text, {
-			text = "BANKED THIS ROUND",
-			textSize = ROW_TEXT_SIZE,
-			color = ROW_COLOR,
-			size = UDim2.new(1, 0, 0, ROW_TEXT_SIZE + 14),
-			layoutOrder = 9,
-		}),
-	}
-
-	-- The local player's own take, stated as cash rather than as a row in a
-	-- ranking. A scoreboard answers "who won"; this answers "what did I get",
-	-- which is the question the board is actually held open for.
-	local yourHaul = 0
-	for _, row in rows do
-		if row.name == props.localName then
-			yourHaul = row.haul
-		end
-	end
 	-- Defaulted, not assumed. The profile arrives by replica, so it is legitimately
 	-- absent for the first frames of a session — and a board that throws takes the
 	-- whole React tree down with it, losing the timer and the countdown too. A
 	-- results screen is the last place that should be able to break the HUD.
 	local profile = props.profile or {}
 	local cash = if typeof(profile.Cash) == "number" then profile.Cash else 0
-	children.YourTake = React.createElement(ui.Text, {
-		text = `+{yourHaul} banked   ·   {cash} total`,
-		textSize = WINNER_TEXT_SIZE,
-		weight = Enum.FontWeight.Bold,
-		color = CASH_COLOR,
-		size = UDim2.new(1, 0, 0, WINNER_TEXT_SIZE + 8),
-		layoutOrder = 3,
-	})
 
-	for i, row in rows do
-		local isYou = row.name == props.localName
-		children["Row" .. i] = React.createElement(ui.Text, {
-			text = string.format("%s   %d", row.name, row.haul),
-			textSize = ROW_TEXT_SIZE,
-			color = if isYou then YOU_COLOR else ROW_COLOR,
-			weight = if isYou then Enum.FontWeight.Bold else Enum.FontWeight.Regular,
-			size = UDim2.new(1, 0, 0, ROW_HEIGHT),
-			layoutOrder = 10 + i,
-		})
+	-- Highest haul first; the scoreboard reads as a ranking.
+	local rows = table.clone(props.hauls)
+	table.sort(rows, function(a, b)
+		return a.haul > b.haul
+	end)
+
+	local yourHaul = 0
+	for _, row in rows do
+		if row.name == props.localName then
+			yourHaul = row.haul
+		end
 	end
 
-	-- Feature-owned sections, in registration order. A section that returns no
-	-- lines is skipped entirely rather than rendered as an empty heading.
-	local order = 100
+	local children: { [string]: any } = {
+		UIListLayout = React.createElement("UIListLayout", {
+			Padding = UDim.new(0, GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			FillDirection = Enum.FillDirection.Vertical,
+		}),
+		Padding = React.createElement("UIPadding", {
+			PaddingLeft = UDim.new(0, PANEL_PADDING),
+			PaddingRight = UDim.new(0, PANEL_PADDING),
+		}),
+	}
+
+	-- 1. OUTCOME — small, and deliberately not the loudest thing on the board.
+	-- Which of these two lines is the headline was the whole problem with the
+	-- first version: every line was 22-28px and centred, so the eye had nowhere
+	-- to land and the screen read as a paragraph.
+	children.Title = React.createElement(ui.Text, {
+		text = "VAULT EXTRACTED",
+		textSize = TITLE_TEXT_SIZE,
+		weight = Enum.FontWeight.Heavy,
+		shadow = true,
+		size = UDim2.new(1, 0, 0, TITLE_TEXT_SIZE + 4),
+		layoutOrder = 1,
+	})
+	children.Winner = React.createElement(ui.Text, {
+		text = `{props.winnerName} got out with it`,
+		textSize = CAPTION_TEXT_SIZE,
+		color = MUTED_COLOR,
+		size = UDim2.new(1, 0, 0, CAPTION_TEXT_SIZE + GROUP_GAP),
+		layoutOrder = 2,
+	})
+
+	-- 2. THE TAKE — the hero. This is the question the board is held open for,
+	-- so it is the biggest thing on it and the only thing in colour.
+	children.Take = React.createElement(ui.Text, {
+		text = `+{yourHaul}`,
+		textSize = HERO_TEXT_SIZE,
+		weight = Enum.FontWeight.Heavy,
+		color = CASH_COLOR,
+		shadow = true,
+		size = UDim2.new(1, 0, 0, HERO_TEXT_SIZE + 4),
+		layoutOrder = 3,
+	})
+	children.TakeCaption = React.createElement(ui.Text, {
+		text = `BANKED  ·  {cash} TOTAL`,
+		textSize = CAPTION_TEXT_SIZE,
+		color = MUTED_COLOR,
+		size = UDim2.new(1, 0, 0, CAPTION_TEXT_SIZE + GROUP_GAP),
+		layoutOrder = 4,
+	})
+
+	-- 3. RANKING — only with someone to rank against. Solo, it repeated the
+	-- hero number two lines under it and added a heading to say so.
+	local order = 10
+	if #rows > 1 then
+		children.RankHeading = React.createElement(ui.Text, {
+			text = "THIS ROUND",
+			textSize = HEADING_TEXT_SIZE,
+			weight = Enum.FontWeight.Bold,
+			color = HEADING_COLOR,
+			size = UDim2.new(1, 0, 0, HEADING_TEXT_SIZE + 8),
+			layoutOrder = order,
+		})
+		for index, row in rows do
+			order += 1
+			local isYou = row.name == props.localName
+			children[`Row{index}`] = React.createElement(ui.Text, {
+				text = `{row.name}   {row.haul}`,
+				textSize = ROW_TEXT_SIZE,
+				color = if isYou then YOU_COLOR else ROW_COLOR,
+				weight = if isYou then Enum.FontWeight.Bold else Enum.FontWeight.Regular,
+				size = UDim2.new(1, 0, 0, ROW_HEIGHT),
+				layoutOrder = order,
+			})
+		end
+		order += 1
+	end
+
+	-- 4. FEATURE SECTIONS. A section that returns no lines is skipped entirely
+	-- rather than rendered as an empty heading.
+	order = 100
 	for _, section in Summary.list() do
 		local ok, lines = pcall(section.lines, profile)
 		if not ok then
@@ -152,42 +184,44 @@ return function(props: Props)
 		order += 1
 		children[`Section_{section.id}`] = React.createElement(ui.Text, {
 			text = section.title,
-			textSize = ROW_TEXT_SIZE,
-			color = ROW_COLOR,
-			size = UDim2.new(1, 0, 0, ROW_TEXT_SIZE + 14),
+			textSize = HEADING_TEXT_SIZE,
+			weight = Enum.FontWeight.Bold,
+			color = HEADING_COLOR,
+			size = UDim2.new(1, 0, 0, HEADING_TEXT_SIZE + 8),
 			layoutOrder = order,
 		})
 		for lineIndex, line in lines do
 			order += 1
 			children[`Section_{section.id}_{lineIndex}`] = React.createElement(ui.Text, {
 				text = line,
-				textSize = SECTION_TEXT_SIZE,
-				color = SECTION_COLOR,
-				size = UDim2.new(1, 0, 0, SECTION_TEXT_SIZE + 6),
+				textSize = ROW_TEXT_SIZE,
+				color = ROW_COLOR,
+				size = UDim2.new(1, 0, 0, ROW_HEIGHT),
 				layoutOrder = order,
 			})
 		end
 	end
 
+	-- 5. THE ACTION.
 	children.Continue = if props.onContinue
 		then React.createElement(ui.Button, {
 			text = "CONTINUE",
-			size = UDim2.fromOffset(220, 44),
+			size = UDim2.fromOffset(220, 46),
 			layoutOrder = 900,
 			onClick = props.onContinue,
 		})
 		else React.createElement(ui.Text, {
 			text = "waiting for the others…",
-			textSize = SECTION_TEXT_SIZE,
-			color = SECTION_COLOR,
-			size = UDim2.new(1, 0, 0, 44),
+			textSize = CAPTION_TEXT_SIZE,
+			color = MUTED_COLOR,
+			size = UDim2.new(1, 0, 0, 46),
 			layoutOrder = 900,
 		})
 
 	return React.createElement("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BackgroundTransparency = 0.45,
+		BackgroundTransparency = 0.35,
 		BorderSizePixel = 0,
 		ZIndex = 100,
 	}, {
@@ -195,6 +229,9 @@ return function(props: Props)
 			size = PANEL_SIZE,
 			position = UDim2.fromScale(0.5, 0.5),
 			anchorPoint = Vector2.new(0.5, 0.5),
+			-- Near-opaque. At the default the maze read straight through the
+			-- middle of the board, and the sky behind it competed with the text.
+			transparency = 0.08,
 		}, children),
 	})
 end

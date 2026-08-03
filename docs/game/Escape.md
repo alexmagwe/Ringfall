@@ -132,9 +132,28 @@ move.
 
 ## What the board shows
 
-`WinScreen.ui.luau` renders the winner, the ranked hauls, and **the local
-player's own take** (`+N banked · M total`) — a scoreboard answers "who won",
-and the board is held open for "what did I get".
+`WinScreen.ui.luau` is built around **one hero number: your take**. A scoreboard
+answers "who won"; the board is held open for "what did I get", so that is the
+biggest thing on it and the only thing in colour.
+
+The first version had no hierarchy at all — eight lines between 18 and 28px, all
+centred, in three near-identical greys. It read as a paragraph, with nothing to
+look at first. Three rules fixed it, and they are worth keeping:
+
+- **One size per role**, stepping hard: 64 hero / 34 title / 22 row / 16 caption
+  / 13 heading. Sizes that differ by 4px do not establish an order.
+- **One coloured thing.** The take is green; everything else is a grey ramp from
+  bright rows down to dim headings.
+- **Say it once.** The ranking is hidden when there is only one player, where it
+  repeated the hero number two lines below it under a heading saying so. Store's
+  section lost its "You can now unlock:" line, since the `THE SHELF` heading
+  above it already said that — a heading followed by a heading.
+
+`MazeRoot` sets **`DisplayOrder = 90`**. `ZIndex` only orders within a single
+`ScreenGui`, so without it the shelf window drew straight through the board
+whenever a round ended with the shelf open: the board dimmed the world, and the
+shelf sat on top of the dim anyway. 90 keeps it under the catch cutscene
+(`HunterController`, 100), which is the one thing that should cover it.
 
 **Everything below that is contributed by other features**, through
 `Maze/Summary.luau`. A feature declares a section from a sibling

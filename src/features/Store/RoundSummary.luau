@@ -40,7 +40,7 @@ return function(Summary)
 					continue
 				end
 				if item.unlockCost <= cash then
-					table.insert(affordable, `{item.label}  —  {item.unlockCost}`)
+					table.insert(affordable, `{item.label}  ·  unlock for {item.unlockCost}`)
 				elseif cheapestLocked == nil or item.unlockCost < cheapestLocked then
 					cheapestLocked = item.unlockCost
 					cheapestLabel = item.label
@@ -51,13 +51,17 @@ return function(Summary)
 				-- Still worth a line: a target reads as progress, where silence
 				-- reads as nothing having happened.
 				if cheapestLocked and cheapestLabel then
-					return { `{cheapestLabel} unlocks at {cheapestLocked}  —  {cheapestLocked - cash} to go` }
+					return { `{cheapestLabel}  ·  {cheapestLocked - cash} more to unlock` }
 				end
 				return {}
 			end
 
+			-- No "You can now unlock:" intro line. The section heading already
+			-- says THE SHELF, and a heading followed by a second heading was
+			-- half of what made the board read as a paragraph. Each line states
+			-- its own meaning instead.
 			table.sort(affordable)
-			local lines = { "You can now unlock:" }
+			local lines: { string } = {}
 			for index, entry in affordable do
 				if index > MAX_LISTED then
 					table.insert(lines, `…and {#affordable - MAX_LISTED} more`)
