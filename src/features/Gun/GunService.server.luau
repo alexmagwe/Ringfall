@@ -72,9 +72,13 @@ local GUN_TARGET_LENGTH = 3
 -- the HANDLE's own axes, not the hand's. X slides the gun along its barrel and
 -- Y raises it. The same 0.35 that read as a sensible sideways nudge with no
 -- rotation became 0.35 of backward slide once the yaw existed, which buried the
--- grip inside the fist. -0.3 seats the fist at the rear of the frame; 0.45
--- drops the gun so the magazine hangs below the hand instead of resting on top
--- of it.
+-- grip inside the fist. -0.3 seats the fist at the rear of the frame, and 0.15
+-- lines the gun up with the forearm.
+--
+-- Judge Y from the GAMEPLAY camera, not from a close side view. Side-on, 0.45
+-- looked correct — grip in the fist, magazine hanging below — and from over the
+-- shoulder, which is the only angle a player ever has, the same value read as
+-- the gun dangling under the hand.
 --
 -- APPLIED OVER whatever `Tool.Grip` the art came with, which took two wrong
 -- turns to arrive at. The first version only applied when `Tool.Grip` was
@@ -92,7 +96,7 @@ local GUN_TARGET_LENGTH = 3
 -- the attribute lives in the .rbxl, which this repo does not track: a fresh
 -- clone, or a value tuned during a playtest and lost on stop, would otherwise
 -- put the gun back in the wrong pose with no clue why.
-local DEFAULT_ART_GRIP = CFrame.new(-0.3, 0.45, 0) * CFrame.Angles(0, math.rad(-90), 0)
+local DEFAULT_ART_GRIP = CFrame.new(-0.3, 0.15, 0) * CFrame.Angles(0, math.rad(-90), 0)
 
 local lastShot: { [Player]: number } = {}
 

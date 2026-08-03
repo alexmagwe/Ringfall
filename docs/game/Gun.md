@@ -72,8 +72,12 @@ the **Handle's** own axes, not the hand's: X slides the gun along its barrel, Y
 raises it. The same `0.35` that read as a sensible sideways nudge with no
 rotation became `0.35` of *backward slide* once the yaw existed, which buried
 the grip inside the fist. `-0.3` seats the fist at the rear of the frame, and
-`0.45` drops the gun so the magazine hangs below the hand rather than resting on
-top of it.
+`0.15` lines the gun up with the forearm.
+
+**Judge the Y offset from the gameplay camera, not from a close side view.**
+Side-on, `0.45` looked right — grip in the fist, magazine hanging below it — and
+from over the shoulder, the only angle a player ever has, that same value read
+as the gun dangling under the hand.
 
 **`DEFAULT_ART_GRIP` is applied over whatever `Tool.Grip` the art came with.**
 Three attempts got here, and each failure is worth not repeating:
@@ -121,7 +125,7 @@ and left alone.
 
 The `Grip` attribute overrides all of it, loose art included.
 
-**`DEFAULT_ART_GRIP` = `CFrame.new(-0.3, 0.45, 0) * CFrame.Angles(0, -90°, 0)`** is
+**`DEFAULT_ART_GRIP` = `CFrame.new(-0.3, 0.15, 0) * CFrame.Angles(0, -90°, 0)`** is
 applied to every authored Tool, over whatever grip the art came with. The value is tuned against the
 pistol currently in `ServerStorage.Gun`. The `Grip` attribute still wins.
 
