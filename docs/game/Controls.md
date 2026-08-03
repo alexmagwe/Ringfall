@@ -27,8 +27,22 @@ That's the whole integration. Controls discovers it at load time — **you never
 edit anything under `src/features/Controls/`** to add a key, and Controls never
 mentions your feature. Same convention as `PlayerData.luau` and `Settings.luau`.
 
-`key` is the chip text and should stay short, since the legend is narrow (`"W A S D"`
-is about the practical maximum). `order` sorts low → high, ties broken by label.
+`key` is the chip text and must stay short — **it is the one thing here with a
+hard limit.** The chips sit in a fixed 92px column so every label starts on the
+same line down the panel; a key wider than that overlaps its own label.
+`"MOUSE 1"` is the widest in play and `"W A S D"` is about the practical
+maximum.
+
+**`label` has no limit.** The panel sizes itself to its content in both
+directions, so a long label widens the whole legend rather than spilling out of
+it. It used to be a fixed 280 wide, which left 164px for the label after padding
+and the key column — and `"Use medkit (when carrying one)"` is wider than that,
+so it drew straight past the panel edge. A `TextLabel` neither wraps nor
+truncates by default; it just overflows. A wider fixed number would only have
+moved the failure, because this list is built from whatever features register,
+and the panel cannot know the longest label in advance.
+
+`order` sorts low → high, ties broken by label.
 Current allocations: Sprint uses 10–20, LookBack uses 40.
 
 ## Sealing

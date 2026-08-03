@@ -29,8 +29,18 @@ function ControlsController.Start()
 	local list = Instance.new("Frame")
 	list.AnchorPoint = Vector2.new(0, 1)
 	list.Position = UDim2.new(0, 18, 1, -18)
-	list.Size = UDim2.fromOffset(280, 0)
-	list.AutomaticSize = Enum.AutomaticSize.Y
+	-- SIZES TO ITS CONTENT, both ways. It was a fixed 280 wide, which left the
+	-- label column 164px after the padding and the key gutter — and "Use medkit
+	-- (when carrying one)" is wider than that, so it drew straight out past the
+	-- panel edge. A TextLabel neither wraps nor truncates by default; it just
+	-- overflows.
+	--
+	-- A wider fixed number would only move the failure. This legend is built from
+	-- `Controls.list()`, so any feature can register any label at any length, and
+	-- the panel cannot know the longest one in advance. Measuring the content is
+	-- the only thing that stays correct as features come and go.
+	list.Size = UDim2.fromOffset(0, 0)
+	list.AutomaticSize = Enum.AutomaticSize.XY
 	list.BackgroundColor3 = Color3.fromRGB(14, 17, 22)
 	list.BackgroundTransparency = 0.25
 	list.BorderSizePixel = 0
@@ -52,7 +62,11 @@ function ControlsController.Start()
 
 	for i, ctrl in Controls.list() do
 		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, 0, 0, 26)
+		-- Offset-only width, growing with its label. A scale width here would be
+		-- circular: the row would size to the panel while the panel sizes to the
+		-- row.
+		row.Size = UDim2.fromOffset(0, 26)
+		row.AutomaticSize = Enum.AutomaticSize.X
 		row.BackgroundTransparency = 1
 		row.LayoutOrder = i
 		row.Parent = list
@@ -82,8 +96,13 @@ function ControlsController.Start()
 
 		local text = Instance.new("TextLabel")
 		text.AnchorPoint = Vector2.new(0, 0.5)
+		-- 92 is the key column: wide enough for the longest chip in play
+		-- ("MOUSE 1"), and fixed so every label starts on the same line down the
+		-- panel. A key long enough to cross it would overlap its own label — keys
+		-- are short by nature, but that is the constraint if one ever isn't.
 		text.Position = UDim2.new(0, 92, 0.5, 0)
-		text.Size = UDim2.new(1, -92, 1, 0)
+		text.Size = UDim2.new(0, 0, 1, 0)
+		text.AutomaticSize = Enum.AutomaticSize.X
 		text.BackgroundTransparency = 1
 		text.Text = ctrl.label
 		text.Font = Enum.Font.Gotham
