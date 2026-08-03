@@ -177,7 +177,7 @@ shelf — so the board never claims a purchase the player did not make.
 `EscapeService.resetRunAttributes`, run on every player at round end:
 
 `Checkpoint`, `CheckpointRing`, `SafeUntil`, `HasGun`, `Ammo`,
-`HasFlashlight`, `StaminaBonus`, **`Haul`, `HasVault`** (new this pass —
+`StaminaBonus`, **`Haul`, `HasVault`** (new this pass —
 nothing from a finished round survives into the next one), plus
 `Health = MaxHealth` (a teleport doesn't fire `HealthService`'s
 `CharacterAdded` refill, so this has to be explicit).

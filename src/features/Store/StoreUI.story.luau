@@ -39,7 +39,7 @@ local MOCK_ITEMS = {
 	},
 	{
 		id = "flashlight.floodlight",
-		label = "Floodlight",
+		label = "Silencer",
 		description = "A far wider, brighter beam for the run.",
 		unlockCost = 250,
 		rentCost = 40,

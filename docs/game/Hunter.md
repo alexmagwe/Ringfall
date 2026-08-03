@@ -216,10 +216,10 @@ See [Salvage.md](Salvage.md) for what those two dropped objects do.
 carrying is stripped by the feature that granted it, each watching the `Caught`
 attribute independently:
 
-- `PickupsService` → `HasGun`, `Ammo`, `HasFlashlight`, `StaminaBonus`
+- `PickupsService` → `HasGun`, `Ammo`, `StaminaBonus`
 - `StoreService` → whatever was rented from the shelf this round
 
-That's why `HunterService` doesn't name Gun, Flashlight, Sprint or the Store —
+That's why `HunterService` doesn't name Gun, Sprint or the Store —
 setting `Caught` is the whole of its involvement, and features subscribe to it.
 Adding a new kind of carried thing means one listener in its own feature and no
 edit here. See [Pickups.md](Pickups.md) for why catch stopped sparing found kit.

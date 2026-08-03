@@ -3,7 +3,7 @@
 return {
 	FOLDER = "Pickups", -- workspace folder the feature owns
 	-- Optional real models the user places in Studio, one child per kind named
-	-- "Ammo" / "Stamina" / "Flashlight" / "Emergency MedKit". A neon ball stands
+	-- "Ammo" / "Stamina" / "Emergency MedKit". A neon ball stands
 	-- in per kind that has no model, so the feature works before any art exists.
 	-- Two things that were once pickups no longer appear in SPAWNS: the Compass
 	-- is standard equipment (see docs/game/Salvage.md), and the gun is rented
@@ -34,7 +34,6 @@ return {
 		-- rented — a magazine you did not pay for extends a weapon you did.
 		{ kind = "Ammo", model = "Ammo", count = 4, color = Color3.fromRGB(240, 130, 60), amount = 6 },
 		{ kind = "Stamina", model = "StaminaBoost", count = 1, color = Color3.fromRGB(120, 230, 150), amount = 50 },
-		{ kind = "Flashlight", model = "Flashlight", count = 1, color = Color3.fromRGB(255, 245, 200) },
 		{ kind = "HealthKit", model = "Emergency MedKit", count = 3, color = Color3.fromRGB(230, 70, 70), amount = 50 },
 	},
 	-- Granted alongside `HasGun` by `grant`. Unreferenced by SPAWNS today, since

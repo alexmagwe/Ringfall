@@ -1,7 +1,7 @@
 # Pickups
 
 Scavenged items scattered around the maze each round: **ammo**, a
-**flashlight**, a **stamina upgrade**, and **MedKits**. Grabbing one is a
+**stamina upgrade**, and **MedKits**. Grabbing one is a
 one-touch grant of a **per-run player attribute** — nothing here ever reaches
 PlayerData. A fresh round wipes all of it and re-scatters to new cells.
 
@@ -66,7 +66,7 @@ Set by `PickupsService` on pickup, read wherever they're consumed, and cleared
 in **two** places:
 
 - **On catch** — `PickupsService` watches the `Caught` attribute and strips
-  `HasGun` / `Ammo` / `HasFlashlight` / `StaminaBonus`. Everything you were
+  `HasGun` / `Ammo` / `StaminaBonus`. Everything you were
   carrying dies with you.
 - **At round end** — `EscapeService.resetRunAttributes`, which clears the same
   set plus everything else per-run.
@@ -88,7 +88,6 @@ the same attribute is harmless.
 | --------- | ---- | ------- | ----------- |
 | `HasGun` | bool | player owns the gun this run | `GunController` (HUD gate), `GunService` (fire gate) |
 | `Ammo` | number | rounds remaining, authoritative | `GunController` (HUD), `GunService` (fire gate + decrement) |
-| `HasFlashlight` | bool | flashlight cone on | `FlashlightController` |
 | `Health` / `MaxHealth` | number | player HP (see Health.md) | `HealthController` (bar), `HunterService` (drain) |
 | `StaminaBonus` | number | added to max stamina (studs of bar), 0 default | `SprintController` |
 
@@ -138,7 +137,6 @@ model parts — bails on the flag. One grab per pickup; ammo/stamina grants are
 
 - **Gun** → `HasGun = true`, `Ammo += GUN_START_AMMO` (12).
 - **Ammo** → `Ammo += amount` (6 per ammo pickup).
-- **Flashlight** → `HasFlashlight = true`.
 - **Stamina** → `StaminaBonus += amount` (50).
 - **HealthKit** → `Health = min(MaxHealth, Health + amount)` (50). The only
   mid-life heal; 3 spawn per round. See [Health.md](Health.md).

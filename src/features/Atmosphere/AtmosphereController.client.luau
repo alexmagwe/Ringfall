@@ -14,10 +14,12 @@
 -- Fog and Atmosphere colours must track the time of day. Dark-blue fog under a
 -- daylight sky reads as a rendering fault, not as distance.
 --
--- NOTE: in daylight the Flashlight pickup is close to worthless, and the maze no
--- longer contrasts with the lit staging room. If the game moves back toward
--- horror, change ClockTime (try 5.1 for blue hour) and darken FogColor/
--- Atmosphere.Color to match — not Ambient on its own.
+-- NOTE: daylight is why there is no light source in the game. The Flashlight
+-- feature and its Floodlight shelf item were deleted rather than left on sale,
+-- because a 250-cash unlock that buys nothing is worse than no option at all.
+-- If the game moves back toward horror, change ClockTime (try 5.1 for blue
+-- hour) and darken FogColor/Atmosphere.Color to match — not Ambient on its own
+-- — and bring a light source back with it.
 --
 -- Auto-loaded: name ends in `Controller`.
 -- .client.luau => splitter routes to StarterPlayerScripts.Features.Atmosphere.

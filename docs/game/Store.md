@@ -56,24 +56,25 @@ window. It owns **no content**. Every item is declared by the feature whose
 effect it applies, through a sibling `Store.luau`:
 
 ```lua
--- src/features/Flashlight/Store.luau
+-- src/features/Health/Store.luau
 return function(Store)
 	Store.registerItem({
-		id = "flashlight.floodlight",
-		label = "Floodlight",
-		description = "A far wider, brighter beam for the run.",
-		unlockCost = 250,
-		rentCost = 40,
-		order = 30,
-		apply = function(player) player:SetAttribute("HasFlashlight", true) end,
-		clear = function(player) player:SetAttribute("HasFlashlight", nil) end,
+		id = "health.medkit",
+		label = "Medkit",
+		description = "One stored charge. Press H to spend it.",
+		unlockCost = 300,
+		rentCost = 80,
+		order = 40,
+		repeatable = true,
+		apply = function(player) player:SetAttribute("MedCharges", (player:GetAttribute("MedCharges") or 0) + 1) end,
+		clear = function(player) player:SetAttribute("MedCharges", nil) end,
 	})
 end
 ```
 
 `Store/init.luau` auto-discovers those at load time on **both realms** — same
 convention as `Settings.luau` and `PlayerData.luau`. Adding an item is zero edits
-to `src/features/Store/`, and the Store never names Gun, Flashlight or Health.
+to `src/features/Store/`, and the Store never names Gun, Health or Sprint.
 
 Registration is **sealed** after discovery. Register only from shared code: the
 server validates purchases against this registry, so a server-only or
@@ -120,12 +121,17 @@ is news.
 | Sidearm | Gun | 0 | 60 | `HasGun = true`, `Ammo += 12` |
 | Silencer | Gun | 400 | 90 | `HasSilencer = true` — shots summon no hunters, clip plays at 0.35 volume |
 | Ammo box | Gun | 0 | 30 | `Ammo += 12` (repeatable) |
-| Floodlight | Flashlight | 250 | 40 | `HasFlashlight = true` |
 | Medkit | Health | 300 | 80 | `MedCharges += 1` (repeatable), spent with **H** |
 
 Prices are a first pass and are meant to be retuned once a typical run's payout
 is known — a full district-3 sweep is 100, the vault alone is 500. See
 `Salvage/Constants.luau`.
+
+**The Floodlight was removed, along with the whole Flashlight feature.** The
+game runs in daylight (`ClockTime 14`, see [Atmosphere.md](Atmosphere.md)), so a
+light source buys nothing — and a 250-cash unlock plus 40 a round that changes
+nothing is worse than no option at all, because it reads as a real choice. If the
+game ever moves back toward darkness, bring a light source back with it.
 
 The **Silencer is deliberately the dearest thing on the shelf.** Every other
 item widens what you can do; that one deletes a cost. Firing normally trades a

@@ -1,5 +1,5 @@
 --!strict
--- Scavenged pickups: ammo, flashlight, stamina upgrade, MedKits. (The gun is
+-- Scavenged pickups: ammo, stamina upgrade, MedKits. (The gun is
 -- rented from the staging shelf, not scattered — see Constants.SPAWNS.)
 -- Scattered at random maze cells every round; touching one grants a per-run
 -- PLAYER ATTRIBUTE (never PlayerData — this is ephemeral, cleared by
@@ -34,8 +34,6 @@ local function grant(player: Player, kind: string, amount: number?)
 		player:SetAttribute("Ammo", (player:GetAttribute("Ammo") or 0) + Constants.GUN_START_AMMO)
 	elseif kind == "Ammo" then
 		player:SetAttribute("Ammo", (player:GetAttribute("Ammo") or 0) + (amount or 0))
-	elseif kind == "Flashlight" then
-		player:SetAttribute("HasFlashlight", true)
 	elseif kind == "Stamina" then
 		player:SetAttribute("StaminaBonus", (player:GetAttribute("StaminaBonus") or 0) + (amount or 0))
 	elseif kind == "HealthKit" then
@@ -279,7 +277,6 @@ function PickupsService.Start()
 	local function clearCarriedKit(player: Player)
 		player:SetAttribute("HasGun", nil)
 		player:SetAttribute("Ammo", nil)
-		player:SetAttribute("HasFlashlight", nil)
 		player:SetAttribute("StaminaBonus", nil)
 	end
 
