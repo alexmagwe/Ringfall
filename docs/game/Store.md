@@ -122,6 +122,7 @@ is news.
 | Silencer | Gun | 400 | 90 | `HasSilencer = true` — shots summon no hunters, clip plays at 0.35 volume |
 | Ammo box | Gun | 0 | 30 | `Ammo += 12` (repeatable) |
 | Medkit | Health | 300 | 80 | `MedCharges += 1` (repeatable), spent with **H** |
+| Stamina cell | Sprint | 500 | 70 | `StaminaBonus += 50` — half again the sprint before you run dry |
 
 Prices are a first pass and are meant to be retuned once a typical run's payout
 is known — a full district-3 sweep is 100, the vault alone is 500. See
@@ -133,7 +134,20 @@ light source buys nothing — and a 250-cash unlock plus 40 a round that changes
 nothing is worse than no option at all, because it reads as a real choice. If the
 game ever moves back toward darkness, bring a light source back with it.
 
-The **Silencer is deliberately the dearest thing on the shelf.** Every other
+**The Stamina cell is the dearest unlock (500), above even the Silencer.** Every
+other item widens what you can do in a fight or in the dark. That one widens the
+only thing that reliably gets you *out* of one: a hunter is faster than your walk
+and slower than your sprint, so sprint duration is your escape budget. It doesn't
+help you win a fight, it makes losing one survivable — worth more in a game whose
+primary verb is hiding.
+
+It is deliberately **not repeatable**, unlike the ammo box. Stacking cells turns
+the escape budget into an unlimited one, and a player who can sprint forever is
+never caught, which removes the hunters rather than making them survivable. The
+scattered Stamina pickup still exists and still stacks *with* it — that is why
+the pickup is worth finding.
+
+The **Silencer is the dearest per-round rent (90), and deliberately so.** Every other
 item widens what you can do; that one deletes a cost. Firing normally trades a
 hunter's health for your position — every shot summons whoever hears it (see
 [Gun.md](Gun.md#summon-trigger)) — and silenced, that trade stops existing. A
