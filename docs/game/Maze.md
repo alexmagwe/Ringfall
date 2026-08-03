@@ -269,15 +269,25 @@ the real floor and stand 0.05 studs deep in the grass, which reads as short
 growth rather than as clipping.
 
 **`groundOverhang` reaches the ground past its own district**, and the outermost
-one needs it. The maze floor overhangs its perimeter wall by `FLOOR_OVERHANG`
-(out to 564) and the staging plate begins at 556, so a ground ring stopping at
-the wall (534) left a 22-stud band of bare floor showing in the one place the
-wall is cut — the corridor players walk in through, on the first frame of every
-round. The outer district reaches 26 studs past, to 560: over the whole overhang
-and 4 studs onto the staging plate, which is the same overlap trick `MazeService`
-uses there and for the same reason — a circular edge and a straight one cannot
-meet cleanly, and the sliver between them shows. Growth still stops at the
-perimeter; only the ground reaches out.
+one needs it. A ground ring stopping at the perimeter wall (534) left a band of
+bare floor showing in the one place the wall is cut — the corridor players walk
+in through, on the first frame of every round.
+
+**It must exceed `MazeService`'s `FLOOR_OVERHANG` (30)**, which is how far the
+maze floor itself reaches past the perimeter, out to 564. The first attempt used
+26 and fell four studs short, so four studs of bare floor still showed — the
+same seam, just moved, and it read as a grey strip lying across the entrance.
+
+34 clears the floor's own rim and lands 4 studs onto the staging plate (which
+begins at 556), so the only visible transition is grass to room floor. That last
+overlap is the same trick `MazeService` uses there and for the same reason: a
+circular edge and a straight one cannot meet cleanly, and the sliver between them
+shows. Growth still stops at the perimeter; only the ground reaches out.
+
+Note when debugging this: **dressing is `CanQuery = false`, so raycasts pass
+straight through it.** A probe down the corridor reports the `Floor` as the top
+surface even where grass covers it — useful for finding exposed floor, useless
+for confirming the grass is there.
 
 ### Budget
 

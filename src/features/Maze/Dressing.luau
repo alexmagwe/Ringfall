@@ -163,13 +163,19 @@ Dressing.OVERGROWN = {
 	growthMaterial = Enum.Material.Grass,
 	groundColor = Color3.fromRGB(72, 96, 58),
 	groundMaterial = Enum.Material.Grass,
-	-- Reaches 26 studs past the perimeter, to 560. The maze floor runs to 564
-	-- and the staging plate starts at 556, so this covers the whole overhang and
-	-- tucks 4 studs over the plate's inner edge — the same overlap trick
-	-- MazeService uses there, for the same reason: a circular edge and a
-	-- straight one cannot meet cleanly, and the sliver between them shows.
+	-- MUST EXCEED MazeService's FLOOR_OVERHANG (30), which is how far the maze
+	-- floor itself reaches past the perimeter. At 26 it fell four studs short,
+	-- and those four studs of bare floor showed as a grey strip lying across the
+	-- entrance — the exact seam this setting exists to remove, just moved.
+	--
+	-- 34 clears the floor's own rim at 564 and lands 4 studs onto the staging
+	-- plate (which begins at 556), so the only visible transition is grass to
+	-- room floor. That last overlap is the same trick MazeService uses there and
+	-- for the same reason: a circular edge and a straight one cannot meet
+	-- cleanly, and the sliver between them shows.
+	--
 	-- Growth itself still stops at the perimeter; only the ground reaches out.
-	groundOverhang = 26,
+	groundOverhang = 34,
 	-- Fewer loose clumps than before: the rubble now carries its own tufts, so
 	-- the growth that matters is already against the walls where players walk.
 	tuftClumps = 40,
