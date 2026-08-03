@@ -3,23 +3,31 @@
 -- root (independent of the framework's BoilRoot — this slice needs no
 -- UIRegistry/UIShell plumbing, just a full-screen overlay + a timer label).
 --
--- Listens for RunStarted (start the top-center timer) and Escaped (stop the
--- timer, show WinScreen). RUN IT BACK sends Restart and resets local state;
--- the actual teleport/unfreeze is server-authoritative (EscapeService).
+-- Listens for RunStarted (start the top-center timer) and RoundEnded (stop the
+-- timer, show WinScreen). CONTINUE sends Net.Continue; the round is held server
+-- side until every player has, so the board stays up until then rather than
+-- being wiped by the next countdown (EscapeService owns the hold).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Boil = require(ReplicatedStorage.Shared.Boil)
 local React = require(ReplicatedStorage.Packages.React)
 local ReactRoblox = require(ReplicatedStorage.Packages.ReactRoblox)
 local Net = require(ReplicatedStorage.Features.Maze.Net)
+local PlayerDataController = require(script.Parent.Parent.PlayerData.PlayerDataController)
 -- WinScreen is a `.ui.luau`, so the splitter routes it to ReplicatedStorage,
 -- not alongside this client script in PlayerScripts.
 local WinScreen = require(ReplicatedStorage.Features.Maze.WinScreen)
 local EscapeCinematic = require(script.Parent.EscapeCinematicController)
 
 local UIController = {}
+
+-- The profile slice this feature owns (registered by Maze/PlayerData.luau).
+-- The board hands the whole table to every registered section, so a section can
+-- report on anything in it.
+local PROFILE_KEY = "Ringfall"
 
 local TIMER_TEXT_SIZE = 40
 local TIMER_FONT = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
@@ -41,6 +49,11 @@ local function App()
 	local results, setResults =
 		React.useState(nil :: { winnerName: string, hauls: { { name: string, haul: number } } }?)
 	local countdown, setCountdown = React.useState(nil :: number?)
+	-- Whether THIS player has pressed CONTINUE. The board stays up either way —
+	-- the server is still waiting on someone — but the button turns into a
+	-- status line, so a pressed button never reads as an unresponsive one.
+	local continued, setContinued = React.useState(false)
+	local profile = Boil.useReplica(PlayerDataController, PROFILE_KEY) or {}
 
 	-- One-time packet subscriptions. ByteNet's `listen` has no unsubscribe,
 	-- but App mounts exactly once for the client's whole session, so a
@@ -67,6 +80,7 @@ local function App()
 		-- Round over: play the pull-back over the maze, then show the board.
 		Net.RoundEnded.listen(function(payload: { winnerName: string, hauls: { { name: string, haul: number } } })
 			setRunning(false)
+			setContinued(false)
 			task.spawn(function()
 				EscapeCinematic.play()
 				setResults(payload)

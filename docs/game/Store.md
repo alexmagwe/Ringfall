@@ -96,6 +96,23 @@ client-only registration would let the two realms' catalogues diverge.
 identical on both realms, but only `StoreService` ever calls them. The client
 never applies anything.
 
+## The round-summary section
+
+`src/features/Store/RoundSummary.luau` declares Store's section on the
+round-end board, discovered by `src/features/Maze/Summary.luau` — Maze never
+names Store, exactly like Store never names Gun (see
+[Escape.md](Escape.md#what-the-board-shows)).
+
+Banking a haul is abstract: a number goes up. The section turns it into what
+that number is *for* — which shelf items your new balance can unlock that it
+could not before, or how much more you need for the cheapest one still locked.
+That is the whole progression loop, stated at the moment it changes.
+
+**It unlocks nothing.** Unlocks are still bought by hand at the shelf, so the
+board can never claim a purchase the player did not make. Items that ship
+unlocked (`unlockCost = 0`) and items already owned are skipped, since neither
+is news.
+
 ## What ships today
 
 | Item | Feature | Unlock | Rent | Effect |

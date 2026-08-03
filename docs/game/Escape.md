@@ -28,7 +28,8 @@ Files:
 
 ## Round state machine
 
-`workspace.RoundState` is a string attribute: `"Staging"` or `"Active"`.
+`workspace.RoundState` is a string attribute: `"Staging"`, `"Active"` or
+`"Summary"`.
 `EscapeService.Start()` kicks off the loop once; from there it's entirely
 self-driving:
 
@@ -50,11 +51,11 @@ self-driving:
    sets a synchronous `extracting` debounce (guards against multiple
    character parts touching the same frame) and calls `endRound(winner)`.
 4. **Round end (`endRound`).** In order:
-   - `RoundState = "Staging"` immediately (blocks any further extraction).
-   - Snapshot every connected player's `Haul` into a list and broadcast
-     `Net.RoundEnded { winnerName, hauls }` — the round's "report" (Phase 6
-     will convert this into persisted cash; until then this packet *is* the
-     bank).
+   - `RoundState = "Summary"` immediately (blocks any further extraction).
+   - Snapshot every connected player's `Haul`, bank it into permanent `Cash`,
+     and broadcast `Net.RoundEnded { winnerName, hauls }`.
+   - **Freeze everyone**: `Escaped = true` and anchor each character.
+   - **`waitForContinue()` — the round stops here.** See below.
    - `workspace.Drops:ClearAllChildren()` — unrecovered haul/vault drops die
      with the round (see [Salvage.md](Salvage.md#nothing-carries-between-rounds)).
    - `MazeService.rebuild(<fresh random seed>)` — a brand new maze, staging
@@ -63,6 +64,70 @@ self-driving:
      (below), unanchor, and teleport back to the (new) `SpawnLocation`.
    - `runStaging()` — the loop repeats — then the `extracting` debounce
      clears.
+
+## The round waits on the summary board
+
+**The round used to restart on its own, and that made the results unreadable.**
+`endRound` set `RoundState = "Staging"` and ran straight into `runStaging()`,
+whose first `Net.RoundState` broadcast is exactly what `UIController` treats as
+"clear last round's board". The board appeared and was wiped roughly a frame
+later.
+
+`"Summary"` exists to break that. It is a state where the board is up, the maze
+still stands, and nothing has been rebuilt — so no client is ever told to clear
+a board it just put up.
+
+**`waitForContinue` holds until every player has sent `Net.Continue`,** which
+the board's CONTINUE button sends, **or until `SUMMARY_TIMEOUT` (60s).**
+
+**The timeout is not optional.** Without it, one player who alt-tabs,
+disconnects mid-teardown or simply walks away freezes every other player in the
+server indefinitely, with no way for them to do anything about it. Waiting for a
+real answer is worth a minute; it is not worth a hostage.
+
+Three details that are easy to get wrong:
+
+- **The `Net.Continue` listener is subscribed once, at `Start`** — not per
+  round. ByteNet's `listen` has no unsubscribe, so a listener registered inside
+  the wait would leak one subscription per round for the life of the server.
+- **The roster is snapshotted** when the wait begins. A player who joins while
+  the board is up is not waited on: they have no round to read about, and
+  including them would restart the wait every time anyone connected. A player
+  who *leaves* stops being waited on (`plr.Parent == Players`).
+- **Freezing is two separate things**, because they fail differently.
+  `Escaped = true` takes players out of `HunterService` targeting and
+  `CheckpointService` tracking — without it a hunter keeps hunting through the
+  summary and can catch someone reading a scoreboard. Anchoring stops them
+  wandering into a maze that is about to be destroyed under them. `resetState`
+  clears `Escaped` and `teleportToStaging` unanchors, so both undo themselves on
+  the way out.
+
+`onCharacterAdded` also anchors during `"Summary"`, not just `"Active"` — a
+player who dies and respawns mid-board would otherwise be the only one free to
+move.
+
+## What the board shows
+
+`WinScreen.ui.luau` renders the winner, the ranked hauls, and **the local
+player's own take** (`+N banked · M total`) — a scoreboard answers "who won",
+and the board is held open for "what did I get".
+
+**Everything below that is contributed by other features**, through
+`Maze/Summary.luau`. A feature declares a section from a sibling
+`RoundSummary.luau` returning `function(Summary) … end`, exactly like
+`Store.luau` / `Settings.luau` / `PlayerData.luau` / `Controls.luau`. Maze owns
+the board; it owns none of the content beyond its own run numbers.
+
+A section is `{ id, title, order?, lines(profile) -> { string } }`. `lines` runs
+**client-side** and is handed the whole `Ringfall` profile slice, so a section
+costs no packet and no server work, and can report on anything the profile
+holds. Returning an empty table hides the section — that is how a feature stays
+quiet on a round it has nothing to say about.
+
+`src/features/Store/RoundSummary.luau` is the first one: it lists what the
+shelf will now sell you that it would not have before, or how far off the next
+unlock is. **It unlocks nothing** — unlocks are still bought by hand at the
+shelf — so the board never claims a purchase the player did not make.
 
 ## Per-run attribute clears
 

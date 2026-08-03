@@ -33,6 +33,10 @@ EscapeService.Priority = 10
 
 local ZONE_RADIUS = 25
 local ROUND_COUNTDOWN = 15 -- seconds in Staging before the door opens
+-- Longest the world will hold on the summary board waiting for a player who is
+-- never going to press CONTINUE. Generous, because reading the board is the
+-- point; bounded, because one idle player must not be able to freeze a server.
+local SUMMARY_TIMEOUT = 60
 -- The door SLIDES INTO THE FLOOR to open. Toggling CanCollide alone is not
 -- enough: the part stays fully opaque and in place, so the door never appears to
 -- open and players just phase through what still looks like a solid wall.
@@ -206,8 +210,58 @@ function EscapeService.Start()
 		end)
 	end
 
+	-- Holds the world at the end of a run while everyone reads the summary
+	-- board, and returns once they have all pressed CONTINUE — or once patience
+	-- runs out.
+	--
+	-- THE TIMEOUT IS NOT OPTIONAL. Without it a single player who alt-tabs,
+	-- disconnects mid-teardown, or simply walks away freezes every other player
+	-- in the server indefinitely, with no way for them to do anything about it.
+	-- Waiting for a real answer is worth a minute; it is not worth a hostage.
+	--
+	-- Players who join DURING the hold are not waited on: they have no round to
+	-- read about, and adding them to the set would restart the wait every time
+	-- someone connected.
+	-- Who has pressed CONTINUE on the board currently up. Subscribed ONCE, here,
+	-- rather than per round: ByteNet's `listen` has no unsubscribe, so a
+	-- listener registered inside the wait would leak one subscription every
+	-- round for the life of the server.
+	local continued: { [Player]: boolean } = {}
+	Net.Continue.listen(function(_payload, player: Player)
+		continued[player] = true
+	end)
+
+	local function waitForContinue()
+		table.clear(continued)
+		-- The roster is snapshotted, so someone joining mid-board is not waited
+		-- on — they have no round to read about, and adding them would restart
+		-- the wait every time anyone connected.
+		local roster = Players:GetPlayers()
+		local deadline = os.clock() + SUMMARY_TIMEOUT
+
+		while os.clock() < deadline do
+			local pending = false
+			for _, plr in roster do
+				-- A player who left is not coming back to press it.
+				if plr.Parent == Players and not continued[plr] then
+					pending = true
+					break
+				end
+			end
+			if not pending then
+				return
+			end
+			task.wait(0.2)
+		end
+	end
+
 	local function endRound(winner: Player)
-		workspace:SetAttribute("RoundState", "Staging")
+		-- A state of its own, not "Staging". The board is up, the maze still
+		-- stands, and nothing has been rebuilt yet — treating that as Staging
+		-- would tell every client to clear the very board it just put up, which
+		-- is exactly the bug this replaces: the results flashed for one frame
+		-- and the round restarted underneath them.
+		workspace:SetAttribute("RoundState", "Summary")
 
 		-- Bank every player's haul into permanent Cash — everyone banks, not
 		-- just the carrier who extracted. The packet is the report of what was
@@ -217,6 +271,31 @@ function EscapeService.Start()
 			table.insert(hauls, { name = plr.Name, haul = bankHaul(plr) })
 		end
 		Net.RoundEnded.sendToAll({ winnerName = winner.Name, hauls = hauls })
+
+		-- Freeze everyone where they stand while the board is up. Two separate
+		-- things have to stop, because they fail differently:
+		--
+		--   * `Escaped` takes players out of HunterService's targeting and out
+		--     of CheckpointService's tracking. Without it a hunter carries on
+		--     hunting through the summary and can catch someone who is reading a
+		--     scoreboard with no way to react.
+		--   * Anchoring stops them wandering off. The teleport at the end of the
+		--     hold puts everyone in the staging room anyway, but an unanchored
+		--     player can walk into a hunter, off a stair, or through the extract
+		--     pad again in the meantime.
+		--
+		-- `resetState` clears `Escaped` at the end of the hold, and
+		-- `teleportToStaging` unanchors — so both are undone on the way out
+		-- without a second pass here.
+		for _, plr in Players:GetPlayers() do
+			plr:SetAttribute("Escaped", true)
+			local character = plr.Character
+			if character then
+				setCharacterAnchored(character, true)
+			end
+		end
+
+		waitForContinue()
 
 		-- Nothing carries between rounds: unrecovered drops die with the round
 		-- (workspace.Salvage re-scatters itself on the MazeGeneration this
@@ -302,7 +381,11 @@ function EscapeService.Start()
 		-- staging room rather than dropping into a live maze — the next
 		-- round's teleport-everyone step (endRound) unanchors them same as
 		-- everyone else.
-		setCharacterAnchored(character, workspace:GetAttribute("RoundState") == "Active")
+		-- Frozen during a live round AND while the summary board is up: a player
+		-- who dies and respawns mid-board would otherwise be the one person free
+		-- to wander a maze that is about to be destroyed under them.
+		local roundState = workspace:GetAttribute("RoundState")
+		setCharacterAnchored(character, roundState == "Active" or roundState == "Summary")
 	end
 
 	local function onPlayerAdded(player: Player)

@@ -29,10 +29,11 @@ return ByteNet.defineNamespace("Maze", function()
 			reliabilityType = "reliable",
 		}),
 
-		-- Client -> Server: "RUN IT BACK" button. Unused by the server-wide
-		-- round loop (EscapeService) — kept only so old client code referencing
-		-- it doesn't error; nothing currently listens for it.
-		Restart = ByteNet.definePacket({
+		-- Client -> Server: "CONTINUE" on the round-summary board. The round is
+		-- held at the end of a run until every player has sent this (or the
+		-- server's patience runs out) — see EscapeService. Sending it twice is
+		-- harmless; the server tracks a set, not a count.
+		Continue = ByteNet.definePacket({
 			value = ByteNet.nothing,
 			reliabilityType = "reliable",
 		}),
