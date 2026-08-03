@@ -8,6 +8,16 @@
 return {
 	SEED = 1001, -- season seed; changing it must change the whole maze
 
+	-- DEV ONLY. Cuts a straight radial corridor from the staging entrance to the
+	-- vault, so the centre and the round-end board are reachable in seconds
+	-- instead of a full three-district descent.
+	--
+	-- MUST BE FALSE TO SHIP. It deliberately breaks the sealed-district rule
+	-- that the whole run is built on: each district is meant to be crossable
+	-- only through its single gate, and this puts a hole through all three. The
+	-- build warns to the output whenever it is on.
+	DEV_DIRECT_PATH = false,
+
 	-- Optional real art for the Vault, placed by the user in Studio as
 	-- ServerStorage.MazeModels.Vault. Missing => MazeService builds its own
 	-- artifact (glowing core in a broken cage), so the centre reads as a prize

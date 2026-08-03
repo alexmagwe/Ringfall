@@ -140,6 +140,30 @@ local function pairKey(b1: number, s1: number, b2: number, s2: number): string
 	return `{a}-{b}`
 end
 
+-- DEV ONLY. Opens a straight radial corridor from the outer band to the hub,
+-- starting at `startSector` — a lift shaft through the whole maze, in and back
+-- out again, so the vault and the round-end board can be reached in seconds
+-- instead of a full descent.
+--
+-- IT BREAKS THE SEALED-DISTRICT RULE ON PURPOSE. Every district is supposed to
+-- be crossable only through its single gate, which is the entire structure of a
+-- run; this cuts a hole through all three. It is gated behind
+-- `Constants.DEV_DIRECT_PATH` and must never ship enabled — see
+-- docs/game/Maze.md.
+--
+-- Only inward passages are opened, so the result is one clean radial line. The
+-- carve has already connected each band internally, and `addLoops` never closes
+-- anything, so adding passages here cannot disconnect the maze.
+local function carveDirectPath(passages: { [string]: boolean }, startSector: number)
+	local s = startSector
+	for b = BANDS, 1, -1 do
+		local ratioIn = sectorsOf(b) / sectorsOf(b - 1)
+		local innerS = math.floor(s / ratioIn)
+		passages[pairKey(b, s, b - 1, innerS)] = true
+		s = innerS
+	end
+end
+
 -- Neighbours of (b, s): CW/CCW within the band, one inward cell, and `ratio`
 -- outward cells (ratio = 1 or 2 from the doubling schedule).
 local function neighbours(b: number, s: number): { { number } }
@@ -689,6 +713,23 @@ function MazeService.rebuild(seed: number)
 	end
 	addLoops(rng, passages)
 
+	-- The mouth of the staging room: a fourth "gate", picked with the same seeded
+	-- `rng` so a seed fully determines the round.
+	--
+	-- Rolled HERE, before any geometry, rather than down in the perimeter section
+	-- where it is used. The dev direct path below has to start at the sector
+	-- players actually walk in through, and `passages` must be final before the
+	-- arcs are built from it. Nothing between here and there draws from `rng`, so
+	-- the draw order is unchanged and a seed still produces the same maze.
+	local sectorCount = sectorsOf(BANDS)
+	local stagingSector = rng:NextInteger(0, sectorCount - 1)
+	local stagingTheta = (stagingSector + 0.5) * (TWO_PI / sectorCount)
+
+	if Constants.DEV_DIRECT_PATH then
+		carveDirectPath(passages, stagingSector)
+		warn("[Maze] DEV_DIRECT_PATH is on: a straight corridor runs from the entrance to the vault. Turn it off before shipping.")
+	end
+
 	local mazeFolder = workspace:FindFirstChild("Maze")
 	if mazeFolder then
 		mazeFolder:ClearAllChildren()
@@ -743,17 +784,12 @@ function MazeService.rebuild(seed: number)
 		end
 	end
 
-	-- Perimeter: sealed outer wall, except for one cut sector — the mouth of
-	-- the staging room (a fourth "gate", picked with the same seeded `rng` so
-	-- a seed fully determines the round). `stagingTheta` is used below to
-	-- build the room itself, after the wall it opens into already exists.
-	local stagingSector: number
-	local stagingTheta: number
+	-- Perimeter: sealed outer wall, except for one cut sector — the mouth of the
+	-- staging room. `stagingSector` is rolled up in the carve section rather than
+	-- here; see the note there.
 	do
 		local sc = sectorsOf(BANDS)
 		local step = TWO_PI / sc
-		stagingSector = rng:NextInteger(0, sc - 1)
-		stagingTheta = (stagingSector + 0.5) * step
 		-- Cut an opening exactly as wide as the corridor, NOT a whole sector.
 		-- A sector at this radius is ~70 studs of arc but the corridor is only
 		-- 50 wide, so skipping the whole sector left ~10 studs of open wall

@@ -247,6 +247,27 @@ density shows up in the output before it shows up as a frame-rate complaint.
 
 Adding a second district look is a `Look` table plus one `Dressing.apply` call.
 
+## Dev shortcut: `DEV_DIRECT_PATH`
+
+`Constants.DEV_DIRECT_PATH` cuts a **straight radial corridor from the staging
+entrance to the vault**, so the centre — and the round-end board behind it — is
+reachable in seconds instead of a full three-district descent.
+
+**It must be `false` to ship.** It deliberately breaks the sealed-district rule
+the whole run is built on: each district is meant to be crossable only through
+its single gate, and this puts a hole through all three. `MazeService` warns to
+the output on every build while it is on.
+
+`carveDirectPath` walks inward from the staging sector, opening each band's
+inward passage in turn — only inward ones, so the result is one clean radial
+line. It runs after `addLoops` and before any geometry, since the arcs are built
+from `passages`.
+
+The staging sector is rolled **before the geometry** for this reason: the
+corridor has to start where players actually walk in. Nothing between that roll
+and the perimeter section draws from `rng`, so the draw order is unchanged and a
+given seed still produces the same maze.
+
 ## Studio assets
 
 **None.** Everything — floor, walls, the staging room, the Vault, the
