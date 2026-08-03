@@ -291,18 +291,30 @@ round):
      [Escape.md](Escape.md)).
    - **Room** — centred at `RADII[13] + 40` = 574, half-depth 25 (kept
      under 30 studs so it can't overlap the sealed maze). Holds the
-     `ExtractPad` (a flat marked disc, the win trigger — see
+     `ExtractPad` (the win trigger, now **invisible** — see
      [Escape.md](Escape.md)) and `SpawnLocation`, positioned near the room's
      far wall facing back down the corridor. Since a polar angle is a
      straight line through the origin, "facing down the corridor" and
      "facing world-centre" are the same direction — no separate look-at
      target needed.
-   - **Palette:** the room gets exactly **one** accent, the `ExtractPad`, in a
-     muted sea-green. Everything else — walls, floor, `Door` — stays neutral
-     grey. The door was a saturated red until it, the pad and the blue-grey
-     shell added up to a three-hue lobby that read as noise; its state was never
-     carried by colour anyway (the countdown says how long is left, and it
-     slides into the floor to open). Tune via `DOOR_COLOR`,
+   - **The pad is invisible, and must still exist.** `Transparency = 1` with
+     `Touched` intact. **Never delete the part** — `EscapeService.bindToMaze`
+     does `WaitForChild("ExtractPad")`, so removing it hangs that bind forever
+     and takes the door, the escape zone and extraction down with it.
+
+     It has been a glowing beacon, then a flat floor marking, and is now
+     nothing you can see. As a disc it read as a teal puddle dropped in the
+     middle of the lobby: the first thing a player looks at on spawn, saying
+     nothing to anyone who isn't carrying the vault, and the loudest object in a
+     room the round hasn't started in yet. The cost is that a carrier running
+     home has no marked spot to stand on — the room is small and they must enter
+     it anyway, but if extraction ever feels vague, add a thin ring at the pad's
+     edge rather than filling the disc back in.
+   - **Palette:** the room now carries no accent at all; walls, floor and `Door`
+     are neutral grey. The door was a saturated red until it, the pad and the
+     blue-grey shell added up to a three-hue lobby that read as noise; its state
+     was never carried by colour anyway (the countdown says how long is left,
+     and it slides into the floor to open). Tune via `DOOR_COLOR`,
      `EXTRACT_PAD_COLOR` and `EXTRACT_PAD_SCALE`.
    - There is **no wall on the corridor's near end** — that opening is the
      perimeter cut itself, so the corridor's mouth lines up flush with it.

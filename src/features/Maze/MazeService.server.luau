@@ -388,13 +388,24 @@ local function buildStaging(theta: number): CFrame
 	pad.CFrame = CFrame.new(polar(STAGING_CENTER_R, theta, FLOOR_Y + 0.6)) * CFrame.Angles(0, 0, math.rad(90))
 	pad.Anchored = true
 	pad.CanCollide = false
-	-- Flat floor marking, NOT a glowing disc. It was Neon with a PointLight back
-	-- when the room was unlit and the pad had to be a beacon; under daylight
-	-- that just reads as a blinding puddle in the middle of the lobby. Still
-	-- clearly a marked circle, and it is still the win trigger — do not delete
-	-- it, EscapeService binds Touched to it.
+	-- INVISIBLE, and still the trigger. DO NOT DELETE THIS PART: EscapeService
+	-- binds Touched to it, and `bindToMaze` does WaitForChild("ExtractPad") —
+	-- removing it hangs that bind forever and takes the door, the escape zone
+	-- and extraction down with it.
+	--
+	-- It has been a beacon and then a floor marking, and is now nothing you can
+	-- see. The disc read as a teal puddle dropped in the middle of the lobby: it
+	-- is the first thing a player looks at on spawn, it says nothing to anyone
+	-- who is not carrying the vault, and it is the loudest object in a room the
+	-- round has not started in yet.
+	--
+	-- What that costs: a carrier running home has no marked spot to stand on.
+	-- The room is small and they have to enter it anyway, so touching the pad is
+	-- hard to miss — but if extraction ever starts feeling vague, the fix is a
+	-- thin ring at the pad's edge rather than filling the disc back in.
 	pad.Material = Enum.Material.SmoothPlastic
 	pad.Color = EXTRACT_PAD_COLOR
+	pad.Transparency = 1
 	pad.Parent = stagingFolder
 
 	-- No overhead lamps here. They existed only because Atmosphere used to run at

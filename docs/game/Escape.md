@@ -43,7 +43,7 @@ self-driving:
    explicit rule, the only timer in a round is the vault alarm
    (`SalvageService`, see [Salvage.md](Salvage.md#the-vault-and-the-alarm)),
    and that only starts once a player actually takes the vault.
-3. **Extraction.** `ExtractPad.Touched` (the pad built inside the staging
+3. **Extraction.** `ExtractPad.Touched` (the invisible pad inside the staging
    room by `MazeService`, see [Maze.md](Maze.md)) fires `onExtractTouched`,
    which does nothing unless the toucher has `HasVault == true` — everyone
    else touching the pad, at any point, is a no-op. The first valid touch
