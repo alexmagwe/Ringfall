@@ -65,6 +65,30 @@ self-driving:
    - `runStaging()` — the loop repeats — then the `extracting` debounce
      clears.
 
+## Testing the end of a round
+
+Descending three districts, finding the vault and carrying it back out is
+several minutes to reach a screen that takes seconds to check. `EscapeService`
+exposes a dev entry point for that:
+
+```lua
+-- Studio command bar, server-side
+require(game.ServerScriptService.Features.Maze.EscapeService).forceEndRound()
+```
+
+It ends the round immediately, crediting the given player (or the first one
+connected) as the carrier — the same path a real extraction takes, board and
+hold included. It shares the `extracting` debounce, so a second call during a
+teardown is a no-op rather than two overlapping rebuilds, and it returns whether
+it actually started one.
+
+**It is not a packet, deliberately.** Nothing a client sends can reach it, so it
+cannot become a way to end rounds from an exploit. A Cmdr command could call it
+later; note that a Cmdr command's `Run` must live in a **server-only** module,
+because a replicated definition carrying `Run` executes on the *client*
+(`Cmdr/Shared/Command.lua`), which for a server-authoritative round end would do
+nothing at all.
+
 ## The round waits on the summary board
 
 **The round used to restart on its own, and that made the results unreadable.**

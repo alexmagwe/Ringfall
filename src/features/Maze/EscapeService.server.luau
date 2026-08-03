@@ -340,6 +340,33 @@ function EscapeService.Start()
 		endRound(player)
 	end
 
+	-- Ends the round right now, as if `winner` had carried the vault onto the
+	-- pad. Exists so the summary board can be tested without playing a whole run
+	-- — descending three districts, finding the vault and carrying it back out
+	-- is several minutes to reach a screen that takes seconds to check.
+	--
+	-- Server-side and deliberately NOT a packet: nothing a client sends can
+	-- reach this. Call it from the Studio command bar, or from a Cmdr command if
+	-- one is ever added:
+	--
+	--   require(game.ServerScriptService.Features.Maze.EscapeService).forceEndRound()
+	--
+	-- Takes the same `extracting` debounce as a real extraction, so calling it
+	-- twice — or during a teardown already in progress — is a no-op rather than
+	-- two overlapping rebuilds. Returns whether it actually started one.
+	function EscapeService.forceEndRound(winner: Player?): boolean
+		if extracting then
+			return false
+		end
+		local target = winner or Players:GetPlayers()[1]
+		if not target then
+			return false -- an empty server has no one to credit or to show a board to
+		end
+		extracting = true
+		endRound(target)
+		return true
+	end
+
 	-- (Re)binds to the current maze geometry. Called once at Start and again
 	-- after every rebuild, because ClearAllChildren destroys the Staging
 	-- folder's Door/ExtractPad (and the Maze folder's EscapeZone) every time.
