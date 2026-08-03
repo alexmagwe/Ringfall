@@ -134,18 +134,29 @@ light source buys nothing — and a 250-cash unlock plus 40 a round that changes
 nothing is worse than no option at all, because it reads as a real choice. If the
 game ever moves back toward darkness, bring a light source back with it.
 
-**The Stamina cell is the dearest unlock (500), above even the Silencer.** Every
-other item widens what you can do in a fight or in the dark. That one widens the
-only thing that reliably gets you *out* of one: a hunter is faster than your walk
-and slower than your sprint, so sprint duration is your escape budget. It doesn't
-help you win a fight, it makes losing one survivable — worth more in a game whose
-primary verb is hiding.
+**The Stamina cell is the dearest unlock (500), above even the Silencer**, and
+what it buys **changes with depth** — which is the actual argument for the price,
+not a flat "it lets you escape".
 
-It is deliberately **not repeatable**, unlike the ammo box. Stacking cells turns
-the escape budget into an unlimited one, and a player who can sprint forever is
-never caught, which removes the hunters rather than making them survivable. The
-scattered Stamina pickup still exists and still stacks *with* it — that is why
-the pickup is worth finding.
+Hunter speed scales from `BASE_SPEED` 18.7 at the rim to `MAX_SPEED` 31.9 near
+the hub (±12% per hunter, see [Hunter.md](Hunter.md#behaviour)), against a walk
+of 17.6 and a sprint of 28.6:
+
+- **Outer district** — sprint clearly outruns them. Stamina is a real escape, and
+  more of it means more escapes per run.
+- **Near the hub** — they are *faster than your sprint*. Stamina buys distance
+  and time to reach a corner or a gate; it does not break the chase.
+
+So it does not help you win a fight, and deep in it does not reliably win a
+flight either. What it buys is **the outer two-thirds of a run made recoverable**,
+which matters most on the way out — when you are carrying the vault, every hunter
+is alerted, and the run is worth the most.
+
+It is deliberately **not repeatable**, unlike the ammo box. Stacking cells makes
+the sprint effectively continuous in the outer rings, and a player who can sprint
+forever out there is never caught — which removes the hunters from two-thirds of
+the maze rather than making them survivable. The scattered Stamina pickup still
+exists and still stacks *with* it, and that is why the pickup is worth the detour.
 
 The **Silencer is the dearest per-round rent (90), and deliberately so.** Every other
 item widens what you can do; that one deletes a cost. Firing normally trades a
