@@ -45,7 +45,9 @@ type Props = {
 	-- The local player's `Ringfall` profile slice, read live. Sections are
 	-- handed this whole table rather than a digest of it, so a feature can
 	-- report on anything the profile holds without a packet or a prop for it.
-	profile: { [string]: any },
+	-- Optional: it arrives by replica and is legitimately absent for the first
+	-- frames of a session.
+	profile: { [string]: any }?,
 	-- Sent to the server, which is what releases the round. nil while the local
 	-- player has already pressed it and the server is still waiting on someone
 	-- else — the button becomes a status line rather than disappearing, so the
@@ -107,7 +109,12 @@ return function(props: Props)
 			yourHaul = row.haul
 		end
 	end
-	local cash = if typeof(props.profile.Cash) == "number" then props.profile.Cash else 0
+	-- Defaulted, not assumed. The profile arrives by replica, so it is legitimately
+	-- absent for the first frames of a session — and a board that throws takes the
+	-- whole React tree down with it, losing the timer and the countdown too. A
+	-- results screen is the last place that should be able to break the HUD.
+	local profile = props.profile or {}
+	local cash = if typeof(profile.Cash) == "number" then profile.Cash else 0
 	children.YourTake = React.createElement(ui.Text, {
 		text = `+{yourHaul} banked   ·   {cash} total`,
 		textSize = WINNER_TEXT_SIZE,
@@ -133,7 +140,7 @@ return function(props: Props)
 	-- lines is skipped entirely rather than rendered as an empty heading.
 	local order = 100
 	for _, section in Summary.list() do
-		local ok, lines = pcall(section.lines, props.profile)
+		local ok, lines = pcall(section.lines, profile)
 		if not ok then
 			warn(`[WinScreen] section "{section.id}" errored: {lines}`)
 			continue

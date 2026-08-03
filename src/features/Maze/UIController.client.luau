@@ -149,6 +149,16 @@ local function App()
 				winnerName = results.winnerName,
 				hauls = results.hauls,
 				localName = Players.LocalPlayer.Name,
+				profile = profile,
+				-- nil once pressed: WinScreen swaps the button for a "waiting
+				-- for the others" line, so a pressed button never reads as an
+				-- unresponsive one.
+				onContinue = if continued
+					then nil
+					else function()
+						setContinued(true)
+						Net.Continue.send()
+					end,
 			})
 			else nil,
 	})
