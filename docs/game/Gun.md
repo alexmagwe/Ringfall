@@ -55,23 +55,30 @@ free-model Tools routinely ship with it left at identity.
 **The fix is a `Grip` attribute of type `CFrame` on the art in Studio.** It is
 the one source of truth, and it overrides everything else.
 
-**The art's own `Tool.Grip` is not trusted.** The pistol in `ServerStorage.Gun`
-carries an authored Grip of `(0, -0.325, 0)` with a -90° yaw, which turns the
-gun a quarter-turn and floats it off the fist; its `Grip` attachment holds the
-same value, because the author kept the two in sync. A non-identity `Tool.Grip`
-is therefore not evidence that the author solved this problem — only that they
-solved *theirs*, with their own rig and their own scripts, both of which are
-stripped on the way in. `DEFAULT_ART_GRIP` is applied over it unconditionally.
+**The yaw in `DEFAULT_ART_GRIP` is load-bearing.** The pistol's `Handle`
+measures `(1.67, 1.03, 0.26)` — the barrel runs along the Handle's own **local
+X**, and the thin axis is Z. Roblox aligns the Handle's axes to the hand, so a
+grip with no rotation points the barrel *across* the body and the gun reads as
+held sideways. The quarter-turn puts it forward. Never reduce this to a plain
+offset.
 
-Two earlier attempts failed and are worth not repeating:
+That value was measured, not guessed. Solving `Handle = hand * C0 *
+Grip:Inverse()` for the pose that points the barrel down the character's
+`LookVector` returns −85° of yaw mid-animation, so −90° at rest.
 
-- **Reading a `Grip` marker under the Handle.** It looked like the answer and it
-  was a coincidence: the marker's value *is* the authored `Tool.Grip`, so
-  copying it changed nothing while appearing to.
+**`DEFAULT_ART_GRIP` is applied over whatever `Tool.Grip` the art came with.**
+Three attempts got here, and each failure is worth not repeating:
+
+- **Reading a `Grip` marker under the Handle.** It looked like the answer and
+  was a coincidence: the marker's value *is* the authored `Tool.Grip`, because
+  the author kept the two in sync. Copying it changed nothing while appearing to.
 - **Applying the default only when `Tool.Grip` was identity**, on the theory
   that identity means "the author never set one". This art disproves it — the
-  authored value is non-identity and wrong, so the default never fired and the
-  gun silently reverted to floating.
+  authored value is non-identity, so the default never fired and the gun
+  silently reverted.
+- **Discarding the authored value wholesale, rotation included.** That is what
+  left the gun sideways. The author's *rotation* was correct; only their offset
+  `(0, -0.325, 0)` was wrong for this rig.
 
 **Tuning it takes seconds and no restarts.** `GunService` watches the art's
 `Grip` attribute and re-applies it to every held gun the moment it changes, and
@@ -105,8 +112,8 @@ and left alone.
 
 The `Grip` attribute overrides all of it, loose art included.
 
-**`DEFAULT_ART_GRIP` = `CFrame.new(0.35, 0, 0)`** is applied to every authored
-Tool, over whatever grip the art came with. The value is tuned against the
+**`DEFAULT_ART_GRIP` = `CFrame.new(0.35, 0, 0) * CFrame.Angles(0, -90°, 0)`** is
+applied to every authored Tool, over whatever grip the art came with. The value is tuned against the
 pistol currently in `ServerStorage.Gun`. The `Grip` attribute still wins.
 
 A per-model number in code is the wrong home for a grip, and it's there anyway

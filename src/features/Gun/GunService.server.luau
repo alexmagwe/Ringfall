@@ -56,26 +56,34 @@ local GUN_TARGET_LENGTH = 3
 -- ServerStorage by dragging the live `Grip` attribute until it sat right: 0.35
 -- along the Handle's own X.
 --
--- APPLIED TO EVERY AUTHORED TOOL, overriding whatever `Tool.Grip` the art came
--- with. That looks rude, and it is the second attempt: the first only applied
--- when `Tool.Grip` was identity, on the theory that identity means the author
--- never set one. The pistol disproved it. Its authored Grip is
--- `(0, -0.325, 0)` with a -90 degree yaw — the same value as the `Grip`
--- attachment under its Handle, because the author kept the two in sync — and
--- that grip turns the gun a quarter-turn and floats it off the fist. So a
--- non-identity Grip is not evidence the author solved this problem; it is only
--- evidence they solved THEIR problem, with their own rig and their own scripts,
--- both of which are stripped on the way in here.
+-- THE YAW IS LOAD-BEARING. Do not simplify this to a plain offset.
 --
--- The `Grip` ATTRIBUTE is the one source of truth, and it still wins over this.
--- Art that needs its own grip states it there, where the person looking at the
--- model can tune it live.
+-- The pistol's Handle measures (1.67, 1.03, 0.26): the barrel runs along the
+-- Handle's own LOCAL X, and the thin axis is Z. Roblox's grip aligns the
+-- Handle's axes to the hand, so with no rotation the barrel points ACROSS the
+-- body and the gun reads as held sideways. The quarter-turn puts it forward.
+--
+-- Measured, not guessed. Solving Handle = hand * C0 * Grip:Inverse() for the
+-- pose that points the barrel down the character's LookVector gives -85 degrees
+-- of yaw mid-animation, i.e. -90 at rest.
+--
+-- APPLIED OVER whatever `Tool.Grip` the art came with, which took two wrong
+-- turns to arrive at. The first version only applied when `Tool.Grip` was
+-- identity, on the theory that identity means the author never set one — but
+-- this pistol ships an authored Grip, so the default never fired at all. The
+-- second discarded the authored value wholesale, including its rotation, which
+-- is what left the gun sideways: the author's ROTATION was right, and only
+-- their offset `(0, -0.325, 0)` was wrong for this rig.
+--
+-- The `Grip` ATTRIBUTE is the one source of truth and still wins over this. Art
+-- that needs its own grip states it there, where the person looking at the model
+-- can tune it live.
 --
 -- A per-model number in code is the wrong home for a grip. It is here because
 -- the attribute lives in the .rbxl, which this repo does not track: a fresh
 -- clone, or a value tuned during a playtest and lost on stop, would otherwise
--- put the gun back in mid-air with no clue why.
-local DEFAULT_ART_GRIP = CFrame.new(0.35, 0, 0)
+-- put the gun back in the wrong pose with no clue why.
+local DEFAULT_ART_GRIP = CFrame.new(0.35, 0, 0) * CFrame.Angles(0, math.rad(-90), 0)
 
 local lastShot: { [Player]: number } = {}
 
