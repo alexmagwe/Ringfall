@@ -93,6 +93,13 @@ export type Look = {
 	groundMaterial: Enum.Material,
 	-- Above 0 the ground reads as standing water rather than as a surface.
 	groundTransparency: number?,
+	-- Extra studs the ground reaches PAST `outerR`. The outermost district needs
+	-- this: the maze floor overhangs its own perimeter wall, so a ground ring
+	-- that stops at the wall leaves a band of bare floor showing in the one place
+	-- the wall is cut — the corridor players walk in through. Overhanging tucks
+	-- the seam under the staging room's own floor plate, where a change of
+	-- surface is justified because you are stepping into a built room.
+	groundOverhang: number?,
 
 	-- Tufts with actual height, in clumps. A flat disc on a flat floor is a
 	-- stain no matter what colour it is — only vertical geometry reads as
@@ -156,6 +163,13 @@ Dressing.OVERGROWN = {
 	growthMaterial = Enum.Material.Grass,
 	groundColor = Color3.fromRGB(72, 96, 58),
 	groundMaterial = Enum.Material.Grass,
+	-- Reaches 26 studs past the perimeter, to 560. The maze floor runs to 564
+	-- and the staging plate starts at 556, so this covers the whole overhang and
+	-- tucks 4 studs over the plate's inner edge — the same overlap trick
+	-- MazeService uses there, for the same reason: a circular edge and a
+	-- straight one cannot meet cleanly, and the sliver between them shows.
+	-- Growth itself still stops at the perimeter; only the ground reaches out.
+	groundOverhang = 26,
 	-- Fewer loose clumps than before: the rubble now carries its own tufts, so
 	-- the growth that matters is already against the walls where players walk.
 	tuftClumps = 40,
@@ -501,7 +515,7 @@ end
 -- `FLOOR_COLOR` ever changes. Both discs sit a hair proud of the floor and a
 -- hair apart from each other, so no two faces are ever coplanar.
 local function layGround(mazeFolder: Instance, innerR: number, outerR: number, floorTopY: number, look: Look, parent: Instance)
-	local ground = newDisc(0, 0, outerR, floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
+	local ground = newDisc(0, 0, outerR + (look.groundOverhang or 0), floorTopY + 0.05, look.groundColor, look.groundMaterial, parent, "Ground")
 	ground.Transparency = look.groundTransparency or 0
 
 	local floor = mazeFolder:FindFirstChild("Floor") :: BasePart?
