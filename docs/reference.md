@@ -337,4 +337,4 @@ See `.gitignore`:
 - `/build` — splitter output
 - `/.rokit` — Rokit tool cache
 - `/node_modules` — reserved
-- `sourcemap.json`, `/Boil.rbxlx`, `/*.rbxlx.lock`, `/*.rbxl.lock` — generated artifacts
+- `sourcemap.json`, `/*.rbxlx`, `/*.rbxl`, `/*.rbxlx.lock`, `/*.rbxl.lock` — generated artifacts

@@ -36,13 +36,14 @@ Then in Roblox Studio:
 
 1. Open (or create) an empty place.
 2. Click **Connect** in the Rojo plugin (default host/port).
-3. File → Save (the place file is gitignored as `Boil.rbxlx`).
+3. File → Save (the place file is gitignored — `.gitignore` covers `/*.rbxlx`
+   and `/*.rbxl` by wildcard, whatever you name it).
 
 ### One-shot build
 
 ```bash
 lune run tools/split        # generate build/ once
-rojo build -o Boil.rbxlx    # or --output Boil.rbxl
+rojo build -o Ringfall.rbxlx    # or --output Ringfall.rbxl
 ```
 
 ## Verifying the scaffold
