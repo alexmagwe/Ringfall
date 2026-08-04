@@ -106,25 +106,30 @@ colour tell survives. `HunterController`'s catch-cam looks for a part named
 the maze frozen in its T-pose. Anything that reads as floating or gliding works
 with that instead of against it: drones, orbs, hovering machines, wisps.
 
-## The avatar
+## The fallback avatar
 
-The body is the duck mesh, scaled up and darkened so it reads as a looming
-silhouette, with two neon-red eyes over the texture's painted eye sockets.
+Used for any kind with no art in `ServerStorage.HunterModels`: the duck mesh,
+scaled and tinted **per kind** so the three still read apart with zero assets.
 
 **The texture is not the yellow bath duck.** `268365500` is already a dark
-mechanical duck with red eyes and a teal beak painted on. `DUCK_TINT` only knocks
-it down a little — pushing it much darker flattens the panel detail and the beak
-into a featureless black blob, which reads worse, not scarier.
+mechanical duck with red eyes and a teal beak painted on. A kind's `tint` only
+knocks it down — pushing it much below ~0.4 on every channel flattens the panel
+detail and the beak into a featureless black blob, which reads worse, not
+scarier.
 
 | Constant | Value | Why |
 | -------- | ----- | --- |
 | `DUCK_MESH` | `rbxassetid://9419831` | Duck mesh |
 | `DUCK_TEXTURE` | `rbxassetid://268365500` | Dark mechanical duck texture |
-| `DUCK_SCALE` | `7` | On a 2x2x2 host part this renders ~7.5 studs tall, against a 5-stud player |
-| `DUCK_TINT` | `(0.6, 0.58, 0.66)` | `SpecialMesh.VertexColor`, multiplies the texture down |
 | `DUCK_LIFT` | `0.8` | Puts the mesh's feet on the collider's base instead of through the floor |
+| `kind.scale` | 6 / 7 / 8 | On a 2x2x2 host part, 7 renders ~7.5 studs tall against a 5-stud player |
+| `kind.tint` | per kind | `SpecialMesh.VertexColor`, multiplies the texture down |
 
-The model is three parts:
+Scale and tint moved onto the kind when the districts got their own enemies —
+there is no single `DUCK_SCALE` or `DUCK_TINT` any more, and nothing to tune
+globally.
+
+With the fallback body, the model is three parts:
 
 - `HumanoidRootPart` — invisible, 3x6x3, the only colliding part. This is what
   actually moves and what the maze navigation is tuned against. **Keep it at
@@ -139,8 +144,10 @@ The model is three parts:
 
 `EYE_X = 1.50`, `EYE_Y = 3.10`, `EYE_Z = 2.80` (studs from the root centre,
 mirrored on X). These were **measured in Studio against a 5-stud reference slab
-at a level camera, not derived** — if you change `DUCK_SCALE` they all need
-re-measuring, since they're absolute studs rather than proportions.
+at a level camera, not derived** — they are absolute studs rather than
+proportions, so they are measured against the Stalker's scale of 7. A kind with a
+very different `scale` wears its eyes slightly off the socket, and art skips them
+entirely (see [Studio assets](#studio-assets)).
 
 Two traps make this fiddly enough to be worth documenting:
 
