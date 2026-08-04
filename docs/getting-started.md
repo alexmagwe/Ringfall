@@ -16,7 +16,13 @@ After `wally install`, `Packages/` will contain `React.lua`, `ReactRoblox.lua`, 
 
 ## Dev loop
 
-Two terminals:
+One terminal:
+
+```bash
+tools/dev.sh   # runs the split watcher + rojo serve; Ctrl-C stops both
+```
+
+Or manually, two terminals:
 
 ```bash
 # terminal 1 — regenerate build/ whenever a file under src/features/ changes
