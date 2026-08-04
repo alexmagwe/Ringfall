@@ -22,7 +22,7 @@ Files:
 | --- | --- | --- | --- |
 | Count | 4 | 6 | 8 |
 | Shots to kill | 16 | 10 | 5 |
-| Sight range | 220 | 140 | 90 |
+| Sight range | 220 | 140 | 90 (**cone only**, ±22°) |
 | Contact drain | 34 /s | 25 /s | 18 /s |
 | Speed scale | ×1.06 | ×1.0 | ×0.88 |
 | Body | duck, scale 8 | duck, scale 7 | **art** (a drone) |
@@ -169,17 +169,53 @@ of the same fight: being *seen* is the punishment, and what arrives is a Stalker
 It is also the right lesson for the district players start in, since the whole
 maze runs on line of sight.
 
+#### It senses through a cone, and you can see the cone
+
+**A spotter is directional.** `nearestInBeam` replaces `nearestSensed` for any
+kind with `attack = "spot"` and a `spotArc`: a player is sensed only when they
+are inside `sightRange` (90), within `spotArc` (±22°) of where the drone is
+facing, **and** in line of sight. Everything else about the drone follows from
+that — including the chase, because a drone that quietly homed in on a player
+its beam was pointing away from would contradict the one thing it shows you.
+
+The cone is **drawn in the world**: a translucent red neon cone (`ScanBeam`,
+the stock cone mesh) welded facing forward for the full 90 studs, about 36 studs
+wide at the far end. It is `CanQuery = false` / `CanTouch = false`, so it is
+invisible to the gun and to the hunters' own sight raycasts — it is light, not
+an object in the corridor.
+
+**This is the fix for a threat you couldn't play around.** Omnidirectional
+sensing at 90 studs punished you with nothing to read and nothing to do about
+it. A visible cone makes crossing behind a drone a move, and timing a dash
+through the gap another. The geometry test is recomputed in `nearestInBeam`; the
+mesh is only the picture of it.
+
+**The angle is flattened to XZ.** The drone hovers 4.5 studs above head height,
+so the true 3D angle down to someone standing underneath it is enormous and
+would fall outside any sane arc. The cone a player reads on the floor is the
+horizontal one, so that is the one that decides.
+
 Three things keep it fair:
 
 - **Throttled to `SPOT_REFRESH` (1s).** The alert is one shared workspace slot;
   rewriting it every tick would pin the district on you permanently. That is the
   cadence the vault alarm already refreshes at.
-- **It flares and sounds an alarm while it holds the lock** — brightness 8 and
-  range 60 on its light, plus a looping `SpotAlarm` on its root
+- **The cone deepens and an alarm sounds while it holds the lock** —
+  transparency 0.88 → 0.68 and its `SpotLight` 0.6 → 1.6, plus a looping
+  `SpotAlarm` on its root
   (`rbxassetid://9113865897`, Pro Sound Effects, whose own description reads
   *Tracker / Triangulate / Warning / Indicator*). Being reported is otherwise
   invisible: no damage, and the consequence arrives from off-screen seconds
   later, which reads as the game cheating rather than as a mistake you made.
+
+  **This used to be a flare, and it was wrong twice.** A `PointLight` jumping to
+  brightness 8 / range 60 was blinding in a district lit for contrast, and it
+  only ever told you something you could no longer act on — by the time it fired
+  you had already been reported. The permanently-visible cone inverts that: the
+  threat is legible *before* it costs you anything, and the lock only deepens
+  what is already on screen. The drone's own body glow (`KindGlow`) is dimmed to
+  1.2 / 16 on spotters for the same reason — at full strength its amber halo
+  washed through the red cone and turned both into one orange smear.
 
   **A loop, not a sting, and that choice is the teaching.** The alarm starting
   says "seen"; the alarm *stopping* says "you broke line of sight" — so the
@@ -197,7 +233,9 @@ Three things keep it fair:
 - **It sets `SpottedAt` on the player**, a timestamp any HUD can read later.
 
 A spotter still chases, because following you is how it keeps you in sight — it
-just never converts the lock into damage.
+just never converts the lock into damage. Leaving the cone is a real loss: the
+alarm lapses after two refresh periods and it falls back to searching your last
+known cell, exactly as a chaser does when you break behind a wall.
 
 **One shared slot, one caveat.** The vault alarm also refreshes `HunterAlert`,
 so a Stray spotting someone while the alarm rings will briefly redirect hunters

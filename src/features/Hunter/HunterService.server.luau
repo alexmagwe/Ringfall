@@ -85,7 +85,13 @@ export type HunterKind = {
 	--               does, and it turns its district into a stealth problem rather
 	--               than a weaker version of the same fight.
 	attack: "contact" | "spot",
-	drain: number, -- player HP per second in contact; unused when attack = "spot" 
+	drain: number, -- player HP per second in contact; unused when attack = "spot"
+	-- SPOTTERS ONLY. Half-angle, in degrees, of the scan cone it projects
+	-- forward. `sightRange` is the cone's length. Being inside the cone (and in
+	-- line of sight) is what gets you reported — a spotter is DIRECTIONAL, so
+	-- you can cross behind one. Omnidirectional sensing at the same range gave
+	-- the player nothing to read and nothing to do about it.
+	spotArc: number?,
 }
 
 local HUNTER_KINDS: { HunterKind } = {
@@ -161,6 +167,11 @@ local HUNTER_KINDS: { HunterKind } = {
 		-- punishment, and what arrives next is a Stalker.
 		attack = "spot",
 		drain = 0,
+		-- 22 degrees each side of where it is looking — about 36 studs of width
+		-- at the far end of its 90-stud beam, so a corridor is covered but the
+		-- one behind it is not. Wide enough that you cannot thread it by
+		-- accident; narrow enough that timing a crossing is a real move.
+		spotArc = 22,
 	},
 }
 
@@ -197,10 +208,30 @@ local BLAST_SOUND_ID = "" -- user may supply a boom sound later; silent until se
 -- tick and pin every hunter in range on the player permanently. One second
 -- matches the cadence the vault alarm already refreshes at.
 local SPOT_REFRESH = 1
--- The spotter's tell. Its light flares while it has a lock, so "I have been
--- seen" is readable from across a corridor rather than only in hindsight.
-local SPOT_GLOW_BRIGHTNESS = 8
-local SPOT_GLOW_RANGE = 60
+-- THE SPOTTER'S TELL IS THE BEAM ITSELF, not a flare.
+--
+-- It used to be a PointLight that jumped to brightness 8 / range 60 on a lock.
+-- Two things were wrong with that. It was blinding — a hard white-hot bloom in
+-- a district lit for contrast. And it only ever told you something you could no
+-- longer act on: by the time it flared you had already been reported.
+--
+-- A permanently-visible red cone inverts that. The threat is legible BEFORE it
+-- costs you anything: you can see exactly what the drone covers, and walking
+-- around it is a decision rather than luck. The lock now only deepens the cone
+-- and lifts a modest light — the alarm is what says "caught", as it always was.
+local SPOT_BEAM_COLOR = Color3.fromRGB(255, 45, 45)
+-- The stock cone mesh. Its apex sits at the part's +Y face, so the weld below
+-- turns it to point down -Z (forward) with the apex at the drone.
+local CONE_MESH = "rbxassetid://1033714"
+-- Idle vs locked. Both are faint — a solid cone would black out the corridor
+-- behind it, and this has to be something you look THROUGH.
+local SPOT_BEAM_IDLE = 0.88
+local SPOT_BEAM_LOCKED = 0.68
+-- The light inside the cone. An eighth of what the old flare was: enough to
+-- tint what the beam is crossing, not enough to read as an explosion.
+local SPOT_LIGHT_IDLE = 0.6
+local SPOT_LIGHT_LOCKED = 1.6
+local SPOT_LIGHT_RANGE = 28
 -- And it sounds an alarm for exactly as long as it holds you.
 --
 -- A LOOP, not a one-shot sting, and that choice is the teaching. The alarm
@@ -460,11 +491,16 @@ local function buildHunter(kind: HunterKind): Model
 	-- HunterController's catch-cam looks for a part named "Eye" and falls back to
 	-- PrimaryPart, so losing them costs nothing but a slightly wider framing.
 	if hasArt then
+		-- A spotter gets a dimmer body glow than a chaser, because it is the only
+		-- kind carrying a second light of its own. Its amber halo at full strength
+		-- washed straight through the red scan cone and turned both into one
+		-- orange smear — the beam has to be the thing you read on a drone.
+		local isSpotter = kind.attack == "spot"
 		local glow = Instance.new("PointLight")
 		glow.Name = "KindGlow"
 		glow.Color = kind.eye
-		glow.Range = 26
-		glow.Brightness = 2.5
+		glow.Range = if isSpotter then 16 else 26
+		glow.Brightness = if isSpotter then 1.2 else 2.5
 		glow.Parent = root
 	end
 	for i, sign in ipairs(if hasArt then {} else { -1, 1 }) do
@@ -501,6 +537,70 @@ local function buildHunter(kind: HunterKind): Model
 		sound.RollOffMinDistance = 10
 		sound.Parent = root
 		sound:Play()
+	end
+
+	-- THE SCAN BEAM. A spotter projects a cone forward for its whole sight range,
+	-- and being inside it is what gets you reported.
+	--
+	-- Built here so it replicates with the model and is visible from the moment
+	-- the drone exists — that is the point of it. It is decoration in the sense
+	-- that nothing raycasts against it (CanQuery/CanTouch off, massless,
+	-- non-colliding); the geometry that decides anything is recomputed in
+	-- `nearestInBeam`. What the cone does is make an invisible rule visible.
+	if kind.attack == "spot" and kind.spotArc then
+		local length = kind.sightRange
+		-- Diameter at the far end. tan(arc) * length each side.
+		local width = 2 * math.tan(math.rad(kind.spotArc)) * length
+
+		local cone = Instance.new("Part")
+		cone.Name = "ScanBeam"
+		cone.Size = Vector3.new(width, length, width)
+		cone.Color = SPOT_BEAM_COLOR
+		cone.Material = Enum.Material.Neon
+		cone.Transparency = SPOT_BEAM_IDLE
+		cone.CastShadow = false
+		-- Invisible to the gun and to the hunters' own line-of-sight raycasts.
+		-- A beam that could be shot, or that blocked a sightline, would be a
+		-- solid object in the corridor rather than light.
+		cone.CanQuery = false
+		cone.CanTouch = false
+		cone.Parent = model
+
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = CONE_MESH
+		mesh.Parent = cone
+
+		-- A Weld, NOT the WeldConstraint every other part uses, because this one
+		-- has to be re-aimed: the beam is truncated at the first wall in front of
+		-- it every tick (see `aimBeam`), which changes both its length and where
+		-- its midpoint sits. A WeldConstraint freezes the relative CFrame it was
+		-- created with and gives nothing to update; a Weld exposes `C0`.
+		--
+		-- Rotating +90 degrees about X maps the mesh's +Y (its apex) onto +Z,
+		-- which is BEHIND the drone — so the apex sits at the drone and the wide
+		-- end is out front.
+		--
+		-- If the beam ever renders inverted (wide end at the drone), the mesh's
+		-- apex is at -Y instead and this angle flips sign. Nothing else changes.
+		cone.CanCollide = false
+		cone.Massless = true
+		cone.CFrame = root.CFrame * CFrame.new(0, 0, -length / 2)
+		local coneWeld = Instance.new("Weld")
+		coneWeld.Name = "ScanBeamWeld"
+		coneWeld.Part0 = root
+		coneWeld.Part1 = cone
+		coneWeld.C0 = CFrame.new(0, 0, -length / 2) * CFrame.Angles(math.pi / 2, 0, 0)
+		coneWeld.Parent = cone
+
+		local beamLight = Instance.new("SpotLight")
+		beamLight.Name = "ScanLight"
+		beamLight.Color = SPOT_BEAM_COLOR
+		beamLight.Brightness = SPOT_LIGHT_IDLE
+		beamLight.Range = SPOT_LIGHT_RANGE
+		beamLight.Angle = math.min(90, kind.spotArc * 2)
+		beamLight.Face = Enum.NormalId.Front
+		beamLight.Parent = root
 	end
 
 	-- Spotters carry a second sound: the alarm they run while reporting you.
@@ -795,6 +895,60 @@ function HunterService.Start()
 		return bestP, bestC
 	end
 
+	-- Nearest player actually INSIDE a spotter's scan cone: in range, within
+	-- `arc` degrees of where the drone is facing, and not behind a wall.
+	--
+	-- This is the whole difference between a spotter and a chaser. A chaser
+	-- senses in every direction, because it is coming for you either way and
+	-- which way it happens to be looking is not a thing you can play around. A
+	-- spotter's threat is a SHAPE — you can see the cone, so crossing behind one
+	-- is a move, and timing a dash through the gap is another. Sensing
+	-- omnidirectionally at 90 studs gave the player the same punishment with
+	-- nothing to read and nothing to do about it.
+	--
+	-- Cheapest tests first: distance, then the dot product, then the raycast.
+	local function nearestInBeam(root: BasePart, range: number, arc: number): (Player?, Model?)
+		local pos = root.Position
+		local facing = root.CFrame.LookVector
+		local cosArc = math.cos(math.rad(arc))
+		local bestP, bestC, bestDist = nil, nil, math.huge
+		for _, plr in Players:GetPlayers() do
+			if outOfRound(plr) then
+				continue
+			end
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if not hrp then
+				continue
+			end
+			local offset = hrp.Position - pos
+			local d = offset.Magnitude
+			if d > range or d >= bestDist then
+				continue
+			end
+			-- Flattened to XZ: the drone hovers above head height, so the real
+			-- 3D angle down to a player standing right underneath it is huge and
+			-- would fall outside any sane arc. The cone the player reads on the
+			-- floor is the horizontal one, so that is the one that must decide.
+			local flat = Vector3.new(offset.X, 0, offset.Z)
+			if flat.Magnitude < 1e-3 then
+				continue
+			end
+			local flatFacing = Vector3.new(facing.X, 0, facing.Z)
+			if flatFacing.Magnitude < 1e-3 then
+				continue
+			end
+			if flat.Unit:Dot(flatFacing.Unit) < cosArc then
+				continue -- outside the cone: it is not looking at you
+			end
+			if not canSee(pos, hrp.Position) then
+				continue -- a wall is between us
+			end
+			bestP, bestC, bestDist = plr, char, d
+		end
+		return bestP, bestC
+	end
+
 	-- Nearest player within physical reach (used for the catch — no LOS check, so
 	-- bumping into a hidden player still catches; cheap, no raycast).
 	local function nearestReachable(pos: Vector3): (Player?, Model?, number)
@@ -933,16 +1087,64 @@ function HunterService.Start()
 		local wanderTarget: number? = nil
 		-- When this chaser last went out of commit range; see HOLD_PATIENCE.
 		local holdSince: number? = nil
-		-- Spotter state: when this hunter last raised the alert, and the light it
-		-- flares while it holds a lock. `KindGlow` exists only on art; the
-		-- fallback duck carries its light on the first eye instead, so the tell
-		-- works either way rather than silently vanishing without a model.
+		-- Spotter state: when this hunter last raised the alert, and the cone it
+		-- deepens while it holds one. Both are nil on every kind but the drone,
+		-- and every use below is guarded, so a chaser simply never touches them.
 		local lastSpot = 0
 		local alarm = root:FindFirstChild("SpotAlarm") :: Sound?
-		local glow = root:FindFirstChild("KindGlow") :: PointLight?
-		if not glow then
-			local eye = hunter:FindFirstChild("Eye")
-			glow = eye and eye:FindFirstChildOfClass("PointLight") :: PointLight?
+		local beam = hunter:FindFirstChild("ScanBeam") :: BasePart?
+		local beamLight = root:FindFirstChild("ScanLight") :: SpotLight?
+
+		local coneWeld = beam and beam:FindFirstChild("ScanBeamWeld") :: Weld?
+		-- Half-width of the cone per stud of length, so a truncated beam keeps
+		-- the same angle instead of turning into a stubby wedge.
+		local coneSpread = if kind.spotArc then math.tan(math.rad(kind.spotArc)) else 0
+
+		-- STOP THE BEAM AT THE FIRST WALL IN FRONT OF IT.
+		--
+		-- Corridors are ~40 studs across and the cone is 90 long, so an untrimmed
+		-- one punched clean through two ring walls and glowed in corridors the
+		-- drone could not see into. That is worse than no beam at all: the whole
+		-- point of drawing it is that what you see is what detects you, and
+		-- `canSee` has always stopped at the first wall.
+		--
+		-- One raycast per drone per repath, which is the cadence this loop
+		-- already pays for its sensing.
+		local function aimBeam()
+			if not beam or not coneWeld then
+				return
+			end
+			local length = kind.sightRange
+			local maze = workspace:FindFirstChild("Maze")
+			if maze then
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Include
+				params.FilterDescendantsInstances = { maze }
+				local hit = workspace:Raycast(root.Position, root.CFrame.LookVector * length, params)
+				-- Only the maze's own walls truncate it. Dressing (rubble, pipes,
+				-- vines) sits in the same folder and is knee-high scenery — a vine
+				-- must not chop the beam in half.
+				if hit then
+					local n = hit.Instance.Name
+					if n == "Arc" or n == "Spoke" or n == "Perimeter" then
+						length = math.max(4, hit.Distance)
+					end
+				end
+			end
+			local width = 2 * coneSpread * length
+			beam.Size = Vector3.new(width, length, width)
+			coneWeld.C0 = CFrame.new(0, 0, -length / 2) * CFrame.Angles(math.pi / 2, 0, 0)
+		end
+
+		-- One place that decides how the cone looks, so the lock and the release
+		-- can never drift apart into two different idle states.
+		local function setBeamLocked(locked: boolean)
+			if beam then
+				beam.Transparency = if locked then SPOT_BEAM_LOCKED else SPOT_BEAM_IDLE
+			end
+			if beamLight then
+				beamLight.Brightness = if locked then SPOT_LIGHT_LOCKED else SPOT_LIGHT_IDLE
+			end
 		end
 
 		-- This hunter's fixed quirks. `flankSeed` picks which approach it claims
@@ -1056,11 +1258,14 @@ function HunterService.Start()
 						if alarm and alarm.IsPlaying then
 							alarm:Stop()
 						end
-						if glow then
-							glow.Brightness = 2.5
-							glow.Range = 26
-						end
+						setBeamLocked(false)
 					end
+					-- Re-trimmed here, at the top of the tick and above every
+					-- `continue`, for the same reason the lapse check is: the evac
+					-- and summon branches skip the rest of the loop, and a beam
+					-- that stopped being trimmed while the drone kept moving would
+					-- be a shaft of red through a wall.
+					aimBeam()
 
 					-- Containment, checked before any behaviour. Targeting already
 					-- ignores anyone past the perimeter, but a hunter can still
@@ -1101,7 +1306,19 @@ function HunterService.Start()
 					--
 					-- Sensing once here also drops a second `nearestSensed` call
 					-- per tick, which is a raycast per candidate.
-					local sensedPlayer, target = nearestSensed(root.Position, kind.sightRange)
+					--
+					-- A SPOTTER SENSES ONLY THROUGH ITS CONE. It has to: the beam
+					-- is drawn in the world, so a drone that quietly homed in on a
+					-- player its beam was pointing away from would be contradicting
+					-- the one thing it shows you. Losing you out of the cone is a
+					-- real loss — the alarm lapses and it falls back to searching
+					-- your last known cell, exactly as a chaser does behind a wall.
+					local sensedPlayer, target
+					if kind.attack == "spot" and kind.spotArc then
+						sensedPlayer, target = nearestInBeam(root, kind.sightRange, kind.spotArc)
+					else
+						sensedPlayer, target = nearestSensed(root.Position, kind.sightRange)
+					end
 					local thrp = target and target:FindFirstChild("HumanoidRootPart") :: BasePart?
 
 					-- A spotter still chases below — following you is how it keeps
@@ -1125,10 +1342,7 @@ function HunterService.Start()
 							-- later, which reads as the game cheating.
 							sensedPlayer:SetAttribute("SpottedAt", now)
 						end
-						if glow then
-							glow.Brightness = SPOT_GLOW_BRIGHTNESS
-							glow.Range = SPOT_GLOW_RANGE
-						end
+						setBeamLocked(true)
 						-- Guarded on IsPlaying: calling Play on a looping sound
 						-- every tick restarts it from zero, which turns a steady
 						-- alarm into a stutter.
