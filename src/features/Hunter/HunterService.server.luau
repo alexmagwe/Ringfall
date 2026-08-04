@@ -77,7 +77,10 @@ local HUNTER_KINDS: { HunterKind } = {
 	{
 		name = "Warden",
 		count = 3,
-		model = "Warden",
+		-- NO ART, deliberately: the ducks ARE the enemy. Scale and tint are what
+		-- separate this one from the Stalker — bigger and violet against the
+		-- Stalker's red.
+		model = nil,
 		tint = Vector3.new(0.42, 0.44, 0.62),
 		scale = 8,
 		eye = Color3.fromRGB(120, 90, 255),
@@ -93,7 +96,9 @@ local HUNTER_KINDS: { HunterKind } = {
 	{
 		name = "Stalker",
 		count = 3,
-		model = "Stalker",
+		-- No art: the duck at its original scale and tint, which is the look the
+		-- whole game was built around.
+		model = nil,
 		tint = Vector3.new(0.6, 0.58, 0.66),
 		scale = 7,
 		eye = Color3.fromRGB(255, 40, 30),
@@ -110,6 +115,9 @@ local HUNTER_KINDS: { HunterKind } = {
 	{
 		name = "Stray",
 		count = 4,
+		-- THE ONE KIND WITH ART. A drone has to look like a machine, not a duck,
+		-- because it behaves like neither of the other two — it reports you
+		-- instead of attacking, and that has to be readable on sight.
 		model = "Stray",
 		tint = Vector3.new(0.5, 0.62, 0.5),
 		scale = 6,
@@ -249,17 +257,31 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 		return false
 	end
 
-	local clone = template:Clone()
-	-- Tool inherits from Model, so a Tool must be unwrapped rather than nested —
+	-- EVERYTHING becomes a Model first, whatever shape it arrived as.
+	--
+	-- The scale-and-ground step below can only measure a Model, and it used to be
+	-- guarded by `if art:IsA("Model")` — so a bare BasePart, an Accessory, or a
+	-- `Hat` (the legacy accessory class, which is what a duck from the toolbox
+	-- is) skipped it entirely and got welded at whatever CFrame it happened to
+	-- carry in ServerStorage, unscaled and nowhere near the hunter. Normalising
+	-- first means there is one path and no shape can miss it.
+	--
+	-- Tool is unwrapped rather than nested, because Tool inherits from Model —
 	-- the same trap that had pickups auto-equipping onto players.
-	local art: Instance = clone
-	if clone:IsA("Tool") then
-		local wrapper = Instance.new("Model")
-		for _, child in clone:GetChildren() do
-			child.Parent = wrapper
+	local clone = template:Clone()
+	local art: Model
+	if clone:IsA("Model") and not clone:IsA("Tool") then
+		art = clone :: Model
+	else
+		art = Instance.new("Model")
+		if clone:IsA("Tool") then
+			for _, child in clone:GetChildren() do
+				child.Parent = art
+			end
+			clone:Destroy()
+		else
+			clone.Parent = art
 		end
-		clone:Destroy()
-		art = wrapper
 	end
 
 	for _, d in art:GetDescendants() do
@@ -273,9 +295,6 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 		if d:IsA("BasePart") then
 			table.insert(parts, d)
 		end
-	end
-	if art:IsA("BasePart") then
-		table.insert(parts, art :: BasePart)
 	end
 	if #parts == 0 then
 		warn(`[Hunter] "{kind.model}" has no BasePart; falling back to the built-in body`)
@@ -298,21 +317,17 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 	-- `kind.hover` then lifts it back off the ground deliberately. Grounding is
 	-- right for legs and wrong for a drone, and since nothing here animates, the
 	-- difference between "flying" and "broken prop" is entirely this number.
-	if art:IsA("Model") then
-		local model = art :: Model
-		local extents = model:GetExtentsSize()
-		local longest = math.max(extents.X, extents.Y, extents.Z)
-		if longest > 0.01 then
-			model:ScaleTo(model:GetScale() * (kind.scale / longest))
-		end
-
-		model:PivotTo(root.CFrame)
-		local boxCF, boxSize = model:GetBoundingBox()
-		local artBottom = boxCF.Position.Y - boxSize.Y / 2
-		local colliderBase = root.Position.Y - root.Size.Y / 2
-		local lift = colliderBase - artBottom + (kind.hover or 0)
-		model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
+	local extents = art:GetExtentsSize()
+	local longest = math.max(extents.X, extents.Y, extents.Z)
+	if longest > 0.01 then
+		art:ScaleTo(art:GetScale() * (kind.scale / longest))
 	end
+
+	art:PivotTo(root.CFrame)
+	local boxCF, boxSize = art:GetBoundingBox()
+	local artBottom = boxCF.Position.Y - boxSize.Y / 2
+	local colliderBase = root.Position.Y - root.Size.Y / 2
+	art:PivotTo(art:GetPivot() + Vector3.new(0, colliderBase - artBottom + (kind.hover or 0), 0))
 
 	for _, part in parts do
 		part.Anchored = false

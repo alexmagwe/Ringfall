@@ -25,6 +25,7 @@ Files:
 | Sight range | 220 | 140 | 90 |
 | Contact drain | 34 /s | 25 /s | 18 /s |
 | Speed scale | ×1.06 | ×1.0 | ×0.88 |
+| Body | duck, scale 8 | duck, scale 7 | **art** (a drone) |
 | Attack | contact | contact | **spotter** |
 | Eyes | violet | red | amber |
 | Drone pitch | 0.7 | 1.0 | 1.35 |
@@ -69,13 +70,32 @@ inside a wall or in the hub sanctuary, where a hunter does nothing but walk out.
 
 ## Studio assets
 
-**None required.** Every kind falls back to the duck, tinted and scaled per type,
-so all three exist and read apart with no assets at all.
+**One model, and only one: `Stray`.**
 
-**Optional art:** a `Folder` named **`HunterModels`** under **ServerStorage**,
-with one child per kind named `Warden`, `Stalker` or `Stray` (the `model` field
-in `HUNTER_KINDS`). A Model, Tool or bare BasePart all work — a Tool is
-*unwrapped*, the same trap that had pickups auto-equipping onto players.
+The **ducks are the enemy**. Warden and Stalker have `model = nil` on purpose —
+they are the code-built duck at different scales and tints (violet at 8, red at
+7), which is the look the whole game was built around. Only the Stray carries
+art, because a drone has to look like a machine: it *behaves* like neither of the
+others, reporting you instead of attacking, and that has to be readable on sight.
+
+**Where art goes:** a `Folder` named **`HunterModels`** under **ServerStorage**,
+with a child named by a kind's `model` field. A Model, Tool, bare BasePart,
+`Accessory` or legacy `Hat` all work — everything is normalised into a Model
+first, and a Tool is *unwrapped* rather than nested (the same trap that had
+pickups auto-equipping onto players).
+
+That normalisation is not cosmetic. The scale-and-ground step can only measure a
+Model, and it used to be skipped for anything that wasn't one — so a `Hat` or a
+bare part would have been welded at whatever CFrame it carried in ServerStorage,
+unscaled and nowhere near the hunter.
+
+**A model with no `BasePart` in it falls back and warns.** That is worth knowing
+because the failure is invisible: an empty `Hat` named `Warden` produced a
+perfectly good-looking duck, since the fallback *is* a duck. Read the output:
+
+```
+[Hunter] "Warden" has no BasePart; falling back to the built-in body
+```
 
 Art is scaled to the kind's `scale` on its longest axis, **stood on the
 collider's base**, and welded to the root **unanchored and massless**.
