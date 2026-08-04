@@ -105,7 +105,14 @@ local function attachTouch(pickup: Instance, kind: string)
 	end
 end
 
-local function buildPickup(kind: string, modelName: string?, color: Color3, amount: number?, position: Vector3): Instance
+local function buildPickup(
+	kind: string,
+	modelName: string?,
+	color: Color3,
+	amount: number?,
+	position: Vector3,
+	scaleTo: number?
+): Instance
 	local template = pickupTemplate(modelName)
 	local pickup: Instance
 
@@ -181,6 +188,25 @@ local function buildPickup(kind: string, modelName: string?, color: Color3, amou
 				d.Massless = true
 			end
 		end
+		-- Rescale imported art to the size the registering feature asked for.
+		-- Applied BEFORE the pivot, so the move lands the finished size where it
+		-- belongs rather than moving it and then growing it off the cell.
+		if scaleTo then
+			local extents = model:GetExtentsSize()
+			local longest = math.max(extents.X, extents.Z)
+			if longest > 0.01 then
+				if not model.PrimaryPart then
+					model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart", true)
+				end
+		-- `ScaleTo` is ABSOLUTE, not a multiplier. It sets the scale against the
+		-- size the model was AUTHORED at, so it has to be composed with the scale
+		-- the model already carries — `GetScale()` on this board is 2.67, and
+		-- `ScaleTo(target / longest)` therefore shrank it to 1.5 studs instead of
+		-- the 4 it was asked for. `GetScale() * ratio` is the relative form.
+				model:ScaleTo(model:GetScale() * (scaleTo / longest))
+			end
+		end
+
 		model:PivotTo(CFrame.new(position))
 		-- Occluded outline so it's findable in the fog without recoloring the
 		-- mesh or glowing through walls.
@@ -308,7 +334,8 @@ function PickupsService.Start()
 				end
 				local cellCenter = MazeNav.cellPos[key]
 				local position = cellCenter + Vector3.new(0, Constants.FLOAT_Y, 0)
-				local pickup = buildPickup(spawn.kind, spawn.model, spawn.color, spawn.amount, position)
+				local pickup =
+					buildPickup(spawn.kind, spawn.model, spawn.color, spawn.amount, position, spawn.scaleTo)
 				pickup.Parent = folder
 			end
 		end

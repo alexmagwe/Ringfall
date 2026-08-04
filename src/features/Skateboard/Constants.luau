@@ -29,7 +29,12 @@ return {
 	-- Art. Same convention as every other pickup: a child of
 	-- ServerStorage.PickupModels, and a built-from-code board if it's absent, so
 	-- the feature works before the user makes anything.
-	MODEL_NAME = "Skateboard",
+	-- The child of ServerStorage.PickupModels to clone, matched EXACTLY —
+	-- FindFirstChild is case-sensitive, and this is spelled the way the art in
+	-- this place is actually spelled (capital B). Naming the child is the whole
+	-- point of the `model` field convention: the art can be called anything, and
+	-- this is what says which anything.
+	MODEL_NAME = "SkateBoard",
 	DECK_COLOR = Color3.fromRGB(38, 42, 50),
 	TRIM_COLOR = Color3.fromRGB(235, 170, 60),
 

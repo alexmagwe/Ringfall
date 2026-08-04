@@ -38,11 +38,34 @@ load-bearing reason as every other pickup: a `Tool` anywhere in Workspace
 auto-equips off a Handle touch, and this one gets welded to the player's feet.
 See the comment in `PickupsService.buildPickup`.
 
-**Your art is rescaled, so its authored size doesn't matter.** `boardModel`
-measures the model's longest horizontal axis and `ScaleTo`s it until that equals
-`Constants.DECK_LENGTH`, keeping its proportions. Without this the board's scale
-is whatever someone's export settings happened to be — and a board authored in
-metres swallows the rider.
+**Your art is rescaled, so its authored size doesn't matter.** The model's
+longest horizontal axis is scaled to `Constants.DECK_LENGTH`, proportions kept.
+Without this the board's scale is whatever someone's export settings happened to
+be — the art in this place arrives 13.33 studs long, nearly three times the
+rider.
+
+**It is rescaled in two places, from one number.** The board is drawn twice —
+lying in the maze and welded under a rider — and those are different code paths.
+The ridden one is `SkateboardService.boardModel`; the world pickup goes through
+Pickups, which learns the target from the `scaleTo` field on the registered
+spawn (see [Pickups.md](Pickups.md#registered-spawns)). Both read
+`DECK_LENGTH`, because a pickup and the thing you pick up must not disagree
+about how big a skateboard is. They did, for one commit: only the ridden board
+was normalised, so the maze held a 13-stud board and your feet held a 4-stud one.
+
+> **`Model:ScaleTo` is ABSOLUTE, not a multiplier.** It sets the scale against
+> the size the model was *authored* at, so it must be composed with the scale the
+> model already carries. This board's `GetScale()` is 2.67, so
+> `ScaleTo(target / longest)` asked for "30% of authored" and produced 1.5 studs
+> instead of the 4 requested. The relative form is
+> `ScaleTo(model:GetScale() * (target / longest))`.
+
+**Seats are neutralised, not destroyed.** A `Seat` or `VehicleSeat` welds
+whoever touches it and takes over their movement — the same class of bug as the
+Tool auto-equip that made picking up a health kit drop the player through the
+floor. Free-model vehicles are built around one, and this board *is* a Part and
+a VehicleSeat. `Disabled = true` rather than `:Destroy()`, because the seat here
+is half the deck's geometry. Applied in both clone paths.
 
 `DECK_LENGTH` is the one number that decides how big the board looks, and it was
 tuned by eye in **both** directions. 5 (the first pass) is as long as the rider

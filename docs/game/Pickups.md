@@ -173,6 +173,7 @@ them, the toast, the "you lose it when you're caught" rule. It owns none of the
 | `grant` | Pickups has no business knowing what a skateboard *is*. Checked **before** the built-in `kind` chain, so a feature can own a kind outright. |
 | `label` | The toast text, so `PickupsController`'s `LABELS` table never has to grow. |
 | `clearOnCatch` | The "everything carried dies with you" rule is Pickups'; *which attributes that means* is the granting feature's. Name only the attributes that survive nothing — see the [Skateboard teardown bug](Skateboard.md#teardown-and-a-bug-worth-remembering) for what happens when two owners clear the same state. |
+| `scaleTo` | Longest horizontal axis in studs to rescale imported art to. `nil` leaves it at its authored size, which is right for art made for this game and wrong for anything imported, where the scale is somebody else's export setting. A feature that renders the same art somewhere else too sets this so the two can't disagree — the skateboard did, briefly: 13 studs in the maze, 4 under the rider. Note `Model:ScaleTo` is **absolute**, so the implementation composes it with `GetScale()`. |
 
 Registered spawns are placed **after** `SPAWNS` (so Pickups' own placement is
 byte-for-byte what it was) and sorted by `kind`, so cell-claiming order is

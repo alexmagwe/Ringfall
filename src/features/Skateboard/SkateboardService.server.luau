@@ -179,7 +179,12 @@ local function boardModel(): Model
 	local extents = model:GetExtentsSize()
 	local longest = math.max(extents.X, extents.Z)
 	if longest > 0.01 then
-		model:ScaleTo(Constants.DECK_LENGTH / longest)
+-- `ScaleTo` is ABSOLUTE, not a multiplier. It sets the scale against the
+	-- size the model was AUTHORED at, so it has to be composed with the scale
+	-- the model already carries — `GetScale()` on this board is 2.67, and
+	-- `ScaleTo(target / longest)` therefore shrank it to 1.5 studs instead of
+	-- the 4 it was asked for. `GetScale() * ratio` is the relative form.
+		model:ScaleTo(model:GetScale() * (Constants.DECK_LENGTH / longest))
 	end
 
 	model.Name = BOARD_NAME

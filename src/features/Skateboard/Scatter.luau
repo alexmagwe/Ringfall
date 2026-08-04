@@ -19,6 +19,12 @@ return function(Scatter)
 		count = 1,
 		color = Constants.TRIM_COLOR,
 		label = "SKATEBOARD  [R] TO RIDE",
+		-- The SAME length the ridden board is normalised to. The art is drawn
+		-- twice — lying in the maze and welded under a rider — and the two must
+		-- not disagree about how big a skateboard is. Imported art arrives at
+		-- whatever scale it was exported at (this one is 13 studs long, nearly
+		-- three times the rider).
+		scaleTo = Constants.DECK_LENGTH,
 		-- Bands 7+ = the middle and outer districts. Not band 10+: the outer
 		-- district is the grass one, so a board that only ever spawned out there
 		-- would be found exactly where it cannot be used.

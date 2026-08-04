@@ -36,6 +36,13 @@ export type Spawn = {
 	minSpawnDist: number?,
 	-- Toast text ("PICKED UP: …"). Defaults to `kind`.
 	label: string?,
+	-- Longest HORIZONTAL axis, in studs, to rescale the art to. nil leaves the
+	-- model at whatever size it was authored — which is right for art made for
+	-- this game and wrong for anything imported, where the scale is somebody
+	-- else's export setting. A feature that also renders the same art somewhere
+	-- else (the skateboard is drawn twice: lying in the maze and welded under a
+	-- rider) sets this so the two cannot disagree about how big the thing is.
+	scaleTo: number?,
 	-- SERVER-SIDE, called on the grab. This is the whole point of the registry:
 	-- the granting feature decides what its own pickup does.
 	grant: (player: Player, amount: number?) -> (),
