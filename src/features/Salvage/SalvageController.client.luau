@@ -33,6 +33,11 @@ function SalvageController.Start()
 	label.TextSize = 28
 	label.Font = Enum.Font.GothamBold
 	label.Text = "HAUL 0"
+	-- Hidden until you are actually carrying something. "HAUL 0" is a readout of
+	-- nothing: it sits in the corner for the whole first leg of every run saying
+	-- only that the run has not started paying yet, which the player knows. It
+	-- earns its place the moment the number moves.
+	label.Visible = false
 	label.Parent = gui
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 2
@@ -55,6 +60,7 @@ function SalvageController.Start()
 		local haul = player:GetAttribute("Haul")
 		local amount = if typeof(haul) == "number" then haul else 0
 		label.Text = "HAUL " .. tostring(amount)
+		label.Visible = amount > 0
 		if amount > lastHaul then
 			flash()
 		end

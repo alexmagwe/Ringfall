@@ -113,6 +113,10 @@ local function App()
 			Position = UDim2.new(0.5, 0, 0, 12),
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
+			-- Hidden while the doors are shut. It reads a frozen 0:00.0 through
+			-- the whole countdown — a number that says nothing, competing for the
+			-- top of the screen with the one number that does.
+			Visible = countdown == nil,
 			Text = formatTimer(elapsed),
 			TextColor3 = Color3.fromRGB(255, 255, 255),
 			TextSize = TIMER_TEXT_SIZE,
@@ -124,7 +128,7 @@ local function App()
 			}),
 		}),
 
-		-- The mission, shown for as long as the doors are shut.
+		-- THE STAGING BLOCK: the mission and the clock, as one thing.
 		--
 		-- Nothing else in the game ever states the objective. A player spawned in
 		-- a sealed room, watched a countdown, and was released into a maze with no
@@ -133,13 +137,19 @@ local function App()
 		-- is the one nobody guesses: taking the vault is not the win, carrying it
 		-- back here is.
 		--
-		-- It lives on the staging countdown deliberately. That is the one window
-		-- where the player has nothing to do and cannot be killed, so the briefing
-		-- costs them nothing and never has to interrupt play to be read.
-		Briefing = if countdown ~= nil
+		-- WRITTEN SHORT, and rewritten shorter once. It was an OBJECTIVE kicker
+		-- over a headline over a full sentence, floating above a separate
+		-- countdown — four text blocks stacked over a health bar, a stamina bar, a
+		-- dead 0:00.0 timer, a HAUL 0 and a six-row key legend. Every one of them
+		-- was defensible alone and together they were a wall. A player reads the
+		-- big line and the clock; anything else is spent budget.
+		--
+		-- One frame, so the two stay a fixed distance apart instead of drifting
+		-- as separate anchored labels.
+		Staging = if countdown ~= nil
 			then React.createElement("Frame", {
-				Size = UDim2.fromOffset(720, 150),
-				Position = UDim2.fromScale(0.5, 0.26),
+				Size = UDim2.fromOffset(760, 170),
+				Position = UDim2.fromScale(0.5, 0.34),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundTransparency = 1,
 				ZIndex = 60,
@@ -149,62 +159,51 @@ local function App()
 					HorizontalAlignment = Enum.HorizontalAlignment.Center,
 					VerticalAlignment = Enum.VerticalAlignment.Center,
 					SortOrder = Enum.SortOrder.LayoutOrder,
-					Padding = UDim.new(0, 6),
-				}),
-
-				Heading = React.createElement("TextLabel", {
-					Size = UDim2.new(1, 0, 0, 22),
-					BackgroundTransparency = 1,
-					Text = "OBJECTIVE",
-					TextColor3 = Color3.fromRGB(150, 162, 176),
-					TextSize = 16,
-					FontFace = TIMER_FONT,
-					LayoutOrder = 1,
+					Padding = UDim.new(0, 4),
 				}),
 
 				Goal = React.createElement("TextLabel", {
-					Size = UDim2.new(1, 0, 0, 46),
+					Size = UDim2.new(1, 0, 0, 44),
 					BackgroundTransparency = 1,
 					Text = "TAKE THE VAULT AT THE CENTRE",
 					TextColor3 = Color3.fromRGB(255, 235, 190),
-					TextSize = 38,
+					TextSize = 34,
 					FontFace = TIMER_FONT,
-					LayoutOrder = 2,
+					LayoutOrder = 1,
 				}, {
 					UIStroke = React.createElement("UIStroke", { Thickness = 2 }),
 				}),
 
+				-- The half nobody guesses, and the shortest way to say it.
 				Catch = React.createElement("TextLabel", {
-					Size = UDim2.new(1, 0, 0, 28),
+					Size = UDim2.new(1, 0, 0, 26),
 					BackgroundTransparency = 1,
-					Text = "…then carry it back to this room. Nothing counts until you're home.",
-					TextColor3 = Color3.fromRGB(206, 214, 222),
-					TextSize = 20,
+					Text = "…and carry it back here",
+					TextColor3 = Color3.fromRGB(196, 206, 216),
+					TextSize = 19,
 					FontFace = TIMER_FONT,
-					LayoutOrder = 3,
+					LayoutOrder = 2,
 				}, {
 					UIStroke = React.createElement("UIStroke", { Thickness = 1.5 }),
 				}),
-			})
-			else nil,
 
-		-- Staging countdown. Without this the player stands in a sealed room
-		-- with no idea the door is about to open.
-		Countdown = if countdown ~= nil
-			then React.createElement("TextLabel", {
-				Size = UDim2.fromOffset(520, 60),
-				Position = UDim2.fromScale(0.5, 0.42),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundTransparency = 1,
-				Text = if countdown > 0
-					then string.format("DOORS OPEN IN %d", countdown)
-					else "GO",
-				TextColor3 = Color3.fromRGB(255, 235, 190),
-				TextSize = 44,
-				FontFace = TIMER_FONT,
-				ZIndex = 60,
-			}, {
-				UIStroke = React.createElement("UIStroke", { Thickness = 2 }),
+				Spacer = React.createElement("Frame", {
+					Size = UDim2.new(1, 0, 0, 22),
+					BackgroundTransparency = 1,
+					LayoutOrder = 3,
+				}),
+
+				Countdown = React.createElement("TextLabel", {
+					Size = UDim2.new(1, 0, 0, 50),
+					BackgroundTransparency = 1,
+					Text = if countdown > 0 then string.format("DOORS OPEN IN %d", countdown) else "GO",
+					TextColor3 = Color3.fromRGB(255, 235, 190),
+					TextSize = 40,
+					FontFace = TIMER_FONT,
+					LayoutOrder = 4,
+				}, {
+					UIStroke = React.createElement("UIStroke", { Thickness = 2 }),
+				}),
 			})
 			else nil,
 
