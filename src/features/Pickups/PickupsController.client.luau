@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Constants = require(ReplicatedStorage.Features.Pickups.Constants)
+local Scatter = require(ReplicatedStorage.Features.Pickups.Scatter)
 
 local PickupsController = {}
 
@@ -82,7 +83,11 @@ function PickupsController.Start()
 			return
 		end
 		local kind = string.match(value, "^(.-)|") or value
-		flash("PICKED UP: " .. (LABELS[kind] or kind))
+		-- Registered spawns carry their own label, so a feature that adds a
+		-- pickup never has to be typed into the table above.
+		local registered = Scatter.byKind(kind)
+		local label = (registered and registered.label) or LABELS[kind] or kind
+		flash("PICKED UP: " .. label)
 	end)
 
 	RunService.Heartbeat:Connect(spinPickups)

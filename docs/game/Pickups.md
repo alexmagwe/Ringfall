@@ -137,8 +137,51 @@ are removed from the shared pool so no later kind can double-claim one.
 No `SPAWNS` entry uses these constraints today — the Compass was the one
 kind that needed them (sealed districts made an unfindable compass a real
 problem), and it's no longer scattered at all now that it's standard
-equipment (see [Salvage.md](Salvage.md)). The machinery stays here, general
-and ready, for any future kind that needs a placement guarantee.
+equipment (see [Salvage.md](Salvage.md)). The **registered** Skateboard spawn
+does use them (`minBand = 7`), so the machinery is live again.
+
+## Registered spawns
+
+`SPAWNS` holds the kinds Pickups genuinely owns. Anything a **separate feature**
+wants in the maze goes through `src/features/Pickups/Scatter.luau` instead, so
+adding one is **zero edits to the Pickups folder**: the feature drops a sibling
+`Scatter.luau` returning `function(Scatter) … end`, exactly like `Store.luau`,
+`Settings.luau`, `Controls.luau` and `RoundSummary.luau`.
+
+```lua
+-- src/features/Skateboard/Scatter.luau
+return function(Scatter)
+    Scatter.registerSpawn({
+        kind = "Skateboard",
+        model = "Skateboard",
+        count = 1,
+        color = Color3.fromRGB(235, 170, 60),
+        label = "SKATEBOARD  [R] TO RIDE",
+        minBand = 7,
+        grant = function(player) player:SetAttribute("HasSkateboard", true) end,
+        clearOnCatch = { "HasSkateboard" },
+    })
+end
+```
+
+Pickups owns the **mechanism** — where things land, the touch that consumes
+them, the toast, the "you lose it when you're caught" rule. It owns none of the
+**content** beyond its own three kinds. A registered spawn therefore brings:
+
+| Field | Why it can't live here |
+| ----- | ---------------------- |
+| `grant` | Pickups has no business knowing what a skateboard *is*. Checked **before** the built-in `kind` chain, so a feature can own a kind outright. |
+| `label` | The toast text, so `PickupsController`'s `LABELS` table never has to grow. |
+| `clearOnCatch` | The "everything carried dies with you" rule is Pickups'; *which attributes that means* is the granting feature's. Name only the attributes that survive nothing — see the [Skateboard teardown bug](Skateboard.md#teardown-and-a-bug-worth-remembering) for what happens when two owners clear the same state. |
+
+Registered spawns are placed **after** `SPAWNS` (so Pickups' own placement is
+byte-for-byte what it was) and sorted by `kind`, so cell-claiming order is
+stable across sessions rather than following hash iteration order.
+
+The registry module skips **itself** during auto-discovery: Pickups is a sibling
+of every other feature, so the loop reaches its own folder and finds
+`Pickups.Scatter` — requiring that from inside its own body is a cyclic require,
+which the surrounding `pcall` would turn into a warning on every boot.
 
 ## Grant-on-touch
 
@@ -175,3 +218,6 @@ Reads `ReplicatedStorage.Features.Maze.MazeNav` for cell placement and
 `workspace.MazeReady` / `workspace.MazeGeneration`. Written attributes are
 read by `Sprint` (`StaminaBonus`) and `Gun` (`HasGun`, `Ammo`); cleared by
 `Maze/EscapeService.server.luau`. `Priority = 12`.
+
+Consumers of the scatter registry are discovered, never required by name —
+[Skateboard](Skateboard.md) is the first one.

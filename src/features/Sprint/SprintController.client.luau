@@ -12,6 +12,13 @@ local RunService = game:GetService("RunService")
 
 local WALK_SPEED = 17.6 -- 16 +10%
 local SPRINT_SPEED = 28.6 -- 26 +10%
+-- Multiplied into whichever of the two is in force, from the server-owned
+-- `SpeedMultiplier` player attribute (nil/0 => 1). This controller writes
+-- `WalkSpeed` every heartbeat, so anything else that set it directly would be
+-- overwritten a frame later — a feature that wants the player faster or slower
+-- publishes this attribute and lets the movement owner apply it. Deliberately
+-- anonymous: Sprint owns the mechanism and never learns which feature set it.
+local MIN_MULTIPLIER = 0.1
 local MAX_STAMINA = 100
 local DRAIN = 26
 local REGEN = 16
@@ -88,12 +95,15 @@ function SprintController.Start()
 		local moving = hum.MoveDirection.Magnitude > 0.1
 		local sprinting = sprintHeld and moving and stamina > 0
 
+		local multiplier = player:GetAttribute("SpeedMultiplier")
+		local scale = if typeof(multiplier) == "number" then math.max(MIN_MULTIPLIER, multiplier) else 1
+
 		if sprinting then
 			stamina = math.max(0, stamina - DRAIN * dt)
-			hum.WalkSpeed = SPRINT_SPEED
+			hum.WalkSpeed = SPRINT_SPEED * scale
 		else
 			stamina = math.min(maxStamina, stamina + REGEN * dt)
-			hum.WalkSpeed = WALK_SPEED
+			hum.WalkSpeed = WALK_SPEED * scale
 		end
 
 		fill.Size = UDim2.fromScale(stamina / maxStamina, 1)

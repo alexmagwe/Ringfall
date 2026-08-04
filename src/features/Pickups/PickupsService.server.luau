@@ -16,6 +16,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
 local Constants = require(ReplicatedStorage.Features.Pickups.Constants)
+local Scatter = require(ReplicatedStorage.Features.Pickups.Scatter)
 
 local PickupsService = {}
 PickupsService.Priority = 12
@@ -29,6 +30,15 @@ local function playerFromPart(part: BasePart): Player?
 end
 
 local function grant(player: Player, kind: string, amount: number?)
+	-- A registered spawn (Scatter.luau in some other feature) brings its own
+	-- grant. Checked FIRST so a feature can own a kind outright without this
+	-- function ever learning what it is.
+	local registered = Scatter.byKind(kind)
+	if registered then
+		registered.grant(player, amount)
+		return
+	end
+
 	if kind == "Gun" then
 		player:SetAttribute("HasGun", true)
 		player:SetAttribute("Ammo", (player:GetAttribute("Ammo") or 0) + Constants.GUN_START_AMMO)
@@ -227,7 +237,17 @@ function PickupsService.Start()
 		-- (unchanged behaviour from before constraints existed).
 		local available = cellKeys
 
-		for _, spawn in Constants.SPAWNS do
+		-- Pickups' own kinds first (unchanged order, so their placement is
+		-- exactly what it was), then whatever other features registered.
+		local allSpawns: { Scatter.Spawn } = {}
+		for _, spawn in Constants.SPAWNS :: any do
+			table.insert(allSpawns, spawn)
+		end
+		for _, spawn in Scatter.list() do
+			table.insert(allSpawns, spawn)
+		end
+
+		for _, spawn in allSpawns do
 			local pool = available
 			if spawn.minBand or spawn.maxBand or spawn.minSpawnDist then
 				local filtered: { number } = {}
@@ -300,6 +320,14 @@ function PickupsService.Start()
 		player:SetAttribute("HasGun", nil)
 		player:SetAttribute("Ammo", nil)
 		player:SetAttribute("StaminaBonus", nil)
+		-- Registered spawns name their own attributes; the rule that everything
+		-- carried dies with you is Pickups', the list of what that means for a
+		-- given kind is the granting feature's.
+		for _, spawn in Scatter.list() do
+			for _, attribute in spawn.clearOnCatch or {} do
+				player:SetAttribute(attribute, nil)
+			end
+		end
 	end
 
 	local function bindCatch(player: Player)

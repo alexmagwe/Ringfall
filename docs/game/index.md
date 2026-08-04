@@ -29,6 +29,7 @@ one-way dependency rule that keeps the framework updatable.
 | [Salvage.md](Salvage.md) | The extraction loop's prize layer — depth-scaled scatter, the Vault + alarm, drop/steal/recover, nothing-carries-between-rounds, and the compass as standard equipment |
 | [Store.md](Store.md) | The staging-room shelf — permanent unlocks vs per-run rentals, banking, server-side purchase validation, and the `Store.luau` registration convention |
 | [Pickups.md](Pickups.md) | Per-run scavenge — ammo, stamina upgrade, medkits; scatter/grant/clear lifecycle + the model-clone convention |
+| [Skateboard.md](Skateboard.md) | A ridden speed boost that only works off grass — the `SpeedMultiplier` seam and the scatter-registry convention |
 | [Health.md](Health.md) | Player HP — hunter-contact drain, MedKit heal, stored medkit charges (H), the top health bar, death-at-0 |
 | [Gun.md](Gun.md) | Client-request/server-authority gun — ammo economy, the `Humanoid.TakeDamage` seam, the summon trigger |
 | [LookBack.md](LookBack.md) | Hold-Q glance behind, and how it avoids inverting movement |
