@@ -51,6 +51,11 @@ export type HunterKind = {
 	scale: number,
 	eye: Color3,
 	dronePitch: number, -- PlaybackSpeed on the loop, so the three sound apart
+	-- Studs from the floor to the BOTTOM of the art. 0 (or nil) stands it on the
+	-- ground, which is right for anything with legs. A flier needs a real value:
+	-- nothing here animates, so a drone resting on the floor reads as broken,
+	-- while a drone held at head height reads as hovering with no work at all.
+	hover: number?,
 	hits: number, -- gunshots to kill
 	speedScale: number, -- multiplies the depth-scaled speed
 	sightRange: number, -- studs; beyond this it cannot sense you at all
@@ -100,6 +105,9 @@ local HUNTER_KINDS: { HunterKind } = {
 		scale = 6,
 		eye = Color3.fromRGB(255, 170, 60),
 		dronePitch = 1.35,
+		-- The Stray IS a drone. Held at roughly head height on a 5-stud player,
+		-- so it reads as flying rather than as a prop someone left on the floor.
+		hover = 2.5,
 		hits = 5,
 		speedScale = 0.88,
 		sightRange = 90,
@@ -259,10 +267,13 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 	--
 	-- The lift is the part that is easy to get wrong. `DUCK_LIFT` centres the art
 	-- on the collider, which suits the duck because the duck is as tall as the
-	-- collider — but a short or wide model centred that way HOVERS, four studs
-	-- off the floor, legs dangling. The general rule is to stand the art on the
-	-- collider's base, whatever shape it is, so the thing the player sees is the
-	-- thing touching the ground.
+	-- collider — but a short or wide model centred that way hangs four studs off
+	-- the floor with its legs dangling. So the base rule is to stand the art's
+	-- lowest point on the collider's lowest point, whatever shape it is.
+	--
+	-- `kind.hover` then lifts it back off the ground deliberately. Grounding is
+	-- right for legs and wrong for a drone, and since nothing here animates, the
+	-- difference between "flying" and "broken prop" is entirely this number.
 	if art:IsA("Model") then
 		local model = art :: Model
 		local extents = model:GetExtentsSize()
@@ -275,7 +286,8 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 		local boxCF, boxSize = model:GetBoundingBox()
 		local artBottom = boxCF.Position.Y - boxSize.Y / 2
 		local colliderBase = root.Position.Y - root.Size.Y / 2
-		model:PivotTo(model:GetPivot() + Vector3.new(0, colliderBase - artBottom, 0))
+		local lift = colliderBase - artBottom + (kind.hover or 0)
+		model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
 	end
 
 	for _, part in parts do

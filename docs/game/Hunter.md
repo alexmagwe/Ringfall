@@ -27,6 +27,7 @@ Files:
 | Speed scale | ×1.06 | ×1.0 | ×0.88 |
 | Eyes | violet | red | amber |
 | Drone pitch | 0.7 | 1.0 | 1.35 |
+| Hover | grounded | grounded | 2.5 studs |
 
 **They share one AI.** What differs is what they can do, and the escalation is
 the point: outward they are many, weak and half-blind; inward they are few,
@@ -80,11 +81,16 @@ collider's base**, and welded to the root **unanchored and massless**.
 
 The grounding matters more than it sounds. `DUCK_LIFT` centres the body on the
 collider, which works for the duck because the duck is about as tall as the
-collider is — but a short or wide model centred the same way *hovers*, several
-studs off the floor with its legs dangling. That is exactly what the first
-spider did. The rule is now "put the art's lowest point on the collider's
-lowest point", whatever shape it is, so the thing the player sees is the thing
-touching the ground. That is the opposite of every other art path here:
+collider is — but a short or wide model centred the same way hangs several studs
+off the floor with its legs dangling. That is exactly what the spider did. The
+base rule is now "put the art's lowest point on the collider's lowest point",
+whatever shape it is.
+
+**`kind.hover` then lifts it back off the ground on purpose**, in studs to the
+bottom of the art. Grounding is right for legs and wrong for a drone — and since
+nothing here animates, that number is the entire difference between "flying" and
+"prop someone left on the floor". The Stray is a drone and sits at 2.5, roughly
+head height on a 5-stud player; the other two are grounded. That is the opposite of every other art path here:
 a pickup and a salvage piece hang still, so anchoring is what keeps them put; a
 hunter *moves*, and an anchored part welded to a moving root either drags it to a
 halt or tears free. Massless matters for the same reason — walk speed should not
