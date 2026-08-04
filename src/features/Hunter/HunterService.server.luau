@@ -108,8 +108,8 @@ local HUNTER_KINDS: { HunterKind } = {
 }
 
 -- Optional art, one child per kind named by its `model` field. Same
--- normalize-any-shape contract as PickupModels: see buildBody.
-local MODELS_FOLDER = "HunterModels" 
+-- normalize-any-shape contract as PickupModels: see attachArt.
+local MODELS_FOLDER = "HunterModels"
 local BASE_SPEED = 18.7 -- outer rings: just above walk (17.6), below sprint (28.6)
 local MAX_SPEED = 31.9 -- near the centre: harder as you go deeper
 -- Scaled with the two above (all three +10% alongside player speed) so the
@@ -251,15 +251,31 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 		return false
 	end
 
-	-- Fit to the kind's height before welding, while it is still a Model with a
-	-- bounding box to measure.
+	-- Fit and GROUND it, while it is still a Model with a bounding box to measure.
+	--
+	-- Scaling is to the kind's size on the longest axis, for the same reason the
+	-- gun scales: Creator Store art is authored at any size, and a hunter wider
+	-- than a corridor cannot path through the maze it lives in.
+	--
+	-- The lift is the part that is easy to get wrong. `DUCK_LIFT` centres the art
+	-- on the collider, which suits the duck because the duck is as tall as the
+	-- collider — but a short or wide model centred that way HOVERS, four studs
+	-- off the floor, legs dangling. The general rule is to stand the art on the
+	-- collider's base, whatever shape it is, so the thing the player sees is the
+	-- thing touching the ground.
 	if art:IsA("Model") then
-		local extents = (art :: Model):GetExtentsSize()
+		local model = art :: Model
+		local extents = model:GetExtentsSize()
 		local longest = math.max(extents.X, extents.Y, extents.Z)
 		if longest > 0.01 then
-			(art :: Model):ScaleTo((art :: Model):GetScale() * (kind.scale / longest))
+			model:ScaleTo(model:GetScale() * (kind.scale / longest))
 		end
-		;(art :: Model):PivotTo(root.CFrame * CFrame.new(0, DUCK_LIFT, 0))
+
+		model:PivotTo(root.CFrame)
+		local boxCF, boxSize = model:GetBoundingBox()
+		local artBottom = boxCF.Position.Y - boxSize.Y / 2
+		local colliderBase = root.Position.Y - root.Size.Y / 2
+		model:PivotTo(model:GetPivot() + Vector3.new(0, colliderBase - artBottom, 0))
 	end
 
 	for _, part in parts do

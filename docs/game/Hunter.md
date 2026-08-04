@@ -75,8 +75,16 @@ with one child per kind named `Warden`, `Stalker` or `Stray` (the `model` field
 in `HUNTER_KINDS`). A Model, Tool or bare BasePart all work — a Tool is
 *unwrapped*, the same trap that had pickups auto-equipping onto players.
 
-Art is scaled to the kind's `scale` on its longest axis, and welded to the root
-**unanchored and massless**. That is the opposite of every other art path here:
+Art is scaled to the kind's `scale` on its longest axis, **stood on the
+collider's base**, and welded to the root **unanchored and massless**.
+
+The grounding matters more than it sounds. `DUCK_LIFT` centres the body on the
+collider, which works for the duck because the duck is about as tall as the
+collider is — but a short or wide model centred the same way *hovers*, several
+studs off the floor with its legs dangling. That is exactly what the first
+spider did. The rule is now "put the art's lowest point on the collider's
+lowest point", whatever shape it is, so the thing the player sees is the thing
+touching the ground. That is the opposite of every other art path here:
 a pickup and a salvage piece hang still, so anchoring is what keeps them put; a
 hunter *moves*, and an anchored part welded to a moving root either drags it to a
 halt or tears free. Massless matters for the same reason — walk speed should not
