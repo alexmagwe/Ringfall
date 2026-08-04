@@ -105,9 +105,11 @@ local HUNTER_KINDS: { HunterKind } = {
 		scale = 6,
 		eye = Color3.fromRGB(255, 170, 60),
 		dronePitch = 1.35,
-		-- The Stray IS a drone. Held at roughly head height on a 5-stud player,
-		-- so it reads as flying rather than as a prop someone left on the floor.
-		hover = 2.5,
+		-- The Stray IS a drone, and it flies ABOVE the player rather than at them:
+		-- 4.5 studs to its underside clears a 5-stud character's head, so you look
+		-- up at it. At 2.5 it sat at chest height and read as hovering awkwardly
+		-- rather than patrolling.
+		hover = 4.5,
 		hits = 5,
 		speedScale = 0.88,
 		sightRange = 90,
