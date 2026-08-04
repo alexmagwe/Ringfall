@@ -1,9 +1,10 @@
 # Hunter
 
-Several creatures that stalk the maze. Each one independently chases the nearest
-player it can *sense*, loses the lock when a wall breaks line-of-sight, then
-falls back to searching their last-known spot and finally to wandering. Catching
-a player drags them back to their last checkpoint behind a red-out.
+Creatures that stalk the maze — **one kind per district**. Each independently
+chases the nearest player it can *sense*, loses the lock when a wall breaks
+line-of-sight, then falls back to searching their last-known spot and finally to
+wandering. Catching a player drags them back to their last checkpoint behind a
+red-out.
 
 Files:
 
@@ -12,12 +13,78 @@ Files:
 - `src/features/Hunter/HunterController.client.luau` — the "caught" cutscene:
   takes the camera, stares up at the nearest hunter, red flash + shake + fade.
 
+## The three kinds
+
+`HUNTER_KINDS` holds one entry per district, indexed the way
+`MazeNav.DISTRICT_BANDS` is — `HUNTER_KINDS[i]` lives in district `i`.
+
+| | Warden (inner) | Stalker (middle) | Stray (outer) |
+| --- | --- | --- | --- |
+| Count | 3 | 3 | 4 |
+| Shots to kill | 16 | 10 | 5 |
+| Sight range | 220 | 140 | 90 |
+| Contact drain | 34 /s | 25 /s | 18 /s |
+| Speed scale | ×1.06 | ×1.0 | ×0.88 |
+| Eyes | violet | red | amber |
+| Drone pitch | 0.7 | 1.0 | 1.35 |
+
+**They share one AI.** What differs is what they can do, and the escalation is
+the point: outward they are many, weak and half-blind; inward they are few,
+tough and see a long way. Crossing a gate should change the rules, not the
+wallpaper. The **Stalker is the untouched original**, so the middle district
+still plays exactly as the game was tuned, and the other two are read against it.
+
+**`sightRange` is the stat that changes a district most.** Sensing used to be
+line-of-sight with no limit at all — any hunter saw any player down the whole
+length of a corridor. A Stray at 90 studs can be walked past once you know what
+you're doing; a Warden at 220 owns the corridor it stands in. The distance test
+runs *before* the raycast, since `canSee` costs a raycast per candidate per
+repath.
+
+**`speedScale` multiplies the depth ramp rather than replacing it**, so the
+existing "faster the deeper you are" curve still shapes all three and only the
+type's character layers on top. It is applied alongside the per-hunter
+`SPEED_VARIANCE` jitter, which does a different job — that one strings a pack
+out, this one separates the kinds.
+
+**The drone is pitched per kind**, so you can hear *which* one is near before you
+see it.
+
+### Home districts
+
+`spawnHunter(kind, district)` records `HomeDistrict` on the model. It decides
+only where a hunter **enters** the maze — they roam freely after that, and a
+Warden wandering out into the middle district is working as intended.
+
+Carrying the district through death and rebuild is what stops the spread
+collapsing: respawns and re-homes both use it, so each district holds the same
+population at the end of a round as at the start. `farSpawn` picks a random
+**cell from `MazeNav`** in that district rather than rolling a radius and angle —
+the old version used one fixed band (180–480) that straddled the middle district
+and clipped the other two, so the outer ring players spawn in and the deep inner
+ring both started nearly empty however many hunters existed. It could also land
+inside a wall or in the hub sanctuary, where a hunter does nothing but walk out.
+
 ## Studio assets
 
-**None.** The hunter is built procedurally at runtime. Nothing needs to exist in
-Workspace, ServerStorage, or ReplicatedStorage — the avatar is two asset IDs
-baked into `HunterService`, so the whole enemy lives in version control and
-survives a fresh clone of the place.
+**None required.** Every kind falls back to the duck, tinted and scaled per type,
+so all three exist and read apart with no assets at all.
+
+**Optional art:** a `Folder` named **`HunterModels`** under **ServerStorage**,
+with one child per kind named `Warden`, `Stalker` or `Stray` (the `model` field
+in `HUNTER_KINDS`). A Model, Tool or bare BasePart all work — a Tool is
+*unwrapped*, the same trap that had pickups auto-equipping onto players.
+
+Art is scaled to the kind's `scale` on its longest axis, and welded to the root
+**unanchored and massless**. That is the opposite of every other art path here:
+a pickup and a salvage piece hang still, so anchoring is what keeps them put; a
+hunter *moves*, and an anchored part welded to a moving root either drags it to a
+halt or tears free. Massless matters for the same reason — walk speed should not
+depend on how heavy someone's mesh is.
+
+**The collider stays 3×6×3 whatever the art is.** Corridor navigation is tuned
+against that box and a wider one wedges in the maze, so the visual body is
+deliberately allowed to overhang it.
 
 ## The avatar
 
@@ -71,8 +138,9 @@ from a level camera, which is the angle that matters in play.
 
 ## Behaviour
 
-`HUNTER_COUNT = 6` hunters spawn once `workspace.MazeReady` is set, each at a
-`farSpawn` point well away from the player spawn.
+Ten hunters spawn once `workspace.MazeReady` is set — 4 Strays, 3 Stalkers and
+3 Wardens, each at a `farSpawn` cell inside its own district and away from the
+player spawn (see [The three kinds](#the-three-kinds)).
 
 Each runs a loop every `REPATH` (0.7s) picking one of three states:
 
@@ -91,7 +159,7 @@ Each runs a loop every `REPATH` (0.7s) picking one of three states:
 cell = identical first step**. Six hunters running the same decision loop against
 the same target therefore picked the same route every tick and travelled
 nose-to-tail down one corridor — six creatures reading as one. Four things break
-that symmetry, none of which touches `HUNTER_COUNT`, `BASE_SPEED` or `MAX_SPEED`:
+that symmetry, none of which touches the kind counts, `BASE_SPEED` or `MAX_SPEED`:
 
 | Mechanism | Constant | What it fixes |
 | --------- | -------- | ------------- |
@@ -246,8 +314,9 @@ never empties — a dead hunter respawns at a far cell. No new player-HP model
 was added; "caught" is still a teleport to checkpoint, and the explosion
 below reuses that exact `catchPlayer` flow rather than dealing damage.
 
-**Health bar.** `buildHunter` sets `hum.MaxHealth = hum.Health = HUNTER_HITS`
-(10) — each gunshot is 1 damage, so 10 hits kill. A `BillboardGui` over the
+**Health bar.** `buildHunter` sets `hum.MaxHealth = hum.Health = kind.hits`
+(5 Stray / 10 Stalker / 16 Warden) — each gunshot is 1 damage, so that is the
+shot count to kill. A Warden costs more than a full magazine. A `BillboardGui` over the
 root (`StudsOffset = (0, 4, 0)`) holds a dark background `Frame` and a red
 `Fill` `Frame`; `hum.HealthChanged` toggles `billboard.Enabled = health <
 MaxHealth` and resizes `Fill` to `health / MaxHealth`. Property changes on a
@@ -266,8 +335,9 @@ only in scope inside that closure):
    flow as the normal bump-catch, just triggered by the blast instead of
    `Heartbeat` proximity. `catchPlayer`'s own `Caught` early-return means a
    multi-hunter chain can't double-catch the same player.
-3. `hunter:Destroy()`, then `task.delay(RESPAWN_DELAY, spawnHunter)` (4s) —
-   `HUNTER_COUNT` (3) stays constant over time.
+3. `hunter:Destroy()`, then a `RESPAWN_DELAY` (4s) respawn of **the same kind
+   into the same district**, so each district's population is constant over a
+   round rather than decaying toward wherever things happened to die.
 
 **Connection teardown on death.** Every per-hunter connection — the `Heartbeat`
 catch loop, the `PlayerAdded` hook, and each per-player `Escaped` watcher — is

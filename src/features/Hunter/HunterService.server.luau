@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local ServerStorage = game:GetService("ServerStorage")
 
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
 -- Cross-feature server require for the drop-on-catch path (dropHaul/
@@ -22,7 +23,93 @@ local SalvageService = require(ServerScriptService.Features.Salvage.SalvageServi
 local HunterService = {}
 HunterService.Priority = 15
 
-local HUNTER_COUNT = 6
+-- ONE ENEMY PER DISTRICT, indexed the way MazeNav.DISTRICT_BANDS is:
+-- 1 = inner, up to #DISTRICT_BANDS = outermost.
+--
+-- The three share one AI. What differs is what they can do, and the shape of the
+-- escalation is deliberate: OUTWARD they are many, weak and short-sighted;
+-- INWARD they are few, tough and see a long way. A player crossing a gate should
+-- feel the rules change, not just the wallpaper.
+--
+-- `speedScale` multiplies the depth ramp rather than replacing it, so the
+-- existing "faster the deeper you are" curve still applies underneath and only
+-- the type's character is layered on top.
+--
+-- `sightRange` is the one that changes play the most. It used to be unlimited —
+-- any hunter saw any player with line of sight, the whole length of a corridor.
+-- A Stray that can only see 90 studs can be walked past; a Warden at 220 owns
+-- the corridor it stands in.
+export type HunterKind = {
+	name: string,
+	count: number,
+	-- Optional art: a child of ServerStorage.HunterModels with this name. Missing
+	-- => the code-built duck, tinted per type.
+	model: string?,
+	-- Fallback look. `tint` multiplies the duck texture; `scale` is the mesh
+	-- scale on a 2x2x2 host; `eye` colours the neon eyes and the catch-cam glow.
+	tint: Vector3,
+	scale: number,
+	eye: Color3,
+	dronePitch: number, -- PlaybackSpeed on the loop, so the three sound apart
+	hits: number, -- gunshots to kill
+	speedScale: number, -- multiplies the depth-scaled speed
+	sightRange: number, -- studs; beyond this it cannot sense you at all
+	drain: number, -- player HP per second in contact
+}
+
+local HUNTER_KINDS: { HunterKind } = {
+	-- INNER — the vault's guard. Slowest to kill, sees furthest, hits hardest,
+	-- and already runs at MAX_SPEED this deep. Three is heavier pressure than
+	-- four of anything else.
+	{
+		name = "Warden",
+		count = 3,
+		model = "Warden",
+		tint = Vector3.new(0.42, 0.44, 0.62),
+		scale = 8,
+		eye = Color3.fromRGB(120, 90, 255),
+		dronePitch = 0.7,
+		hits = 16,
+		speedScale = 1.06,
+		sightRange = 220,
+		drain = 34,
+	},
+	-- MIDDLE — the original hunter, unchanged. It is the baseline the other two
+	-- are read against, so it keeps every value the game was tuned on.
+	{
+		name = "Stalker",
+		count = 3,
+		model = "Stalker",
+		tint = Vector3.new(0.6, 0.58, 0.66),
+		scale = 7,
+		eye = Color3.fromRGB(255, 40, 30),
+		dronePitch = 1,
+		hits = 10,
+		speedScale = 1,
+		sightRange = 140,
+		drain = 25,
+	},
+	-- OUTER — where players spawn and where they learn the game. Many, weak,
+	-- and half-blind: something you can be caught by while careless, and walk
+	-- past once you know what you are doing.
+	{
+		name = "Stray",
+		count = 4,
+		model = "Stray",
+		tint = Vector3.new(0.5, 0.62, 0.5),
+		scale = 6,
+		eye = Color3.fromRGB(255, 170, 60),
+		dronePitch = 1.35,
+		hits = 5,
+		speedScale = 0.88,
+		sightRange = 90,
+		drain = 18,
+	},
+}
+
+-- Optional art, one child per kind named by its `model` field. Same
+-- normalize-any-shape contract as PickupModels: see buildBody.
+local MODELS_FOLDER = "HunterModels" 
 local BASE_SPEED = 18.7 -- outer rings: just above walk (17.6), below sprint (28.6)
 local MAX_SPEED = 31.9 -- near the centre: harder as you go deeper
 -- Scaled with the two above (all three +10% alongside player speed) so the
@@ -31,18 +118,17 @@ local SPEED_PER_BAND = 1.1
 local CATCH_DIST = 7
 local REPATH = 0.7
 local EVAC_ALERT_SECONDS = 4 -- window after any escape where every hunter sprints for the centre
-local EYE_COLOR = Color3.fromRGB(255, 40, 30)
 
--- Combat: 10 gunshots kill a hunter. On death it explodes and drags anyone
--- caught in the blast to their checkpoint (reuses catchPlayer — no player-HP
--- model). It respawns at a far cell so the maze never empties.
-local HUNTER_HITS = 10
+-- Combat: `kind.hits` gunshots kill a hunter (5 / 10 / 16). On death it explodes
+-- and drags anyone caught in the blast to their checkpoint (reuses catchPlayer —
+-- no player-HP model). It respawns into its own district so the maze never
+-- empties and never lopsides.
 local BLAST_RADIUS = 14
 local RESPAWN_DELAY = 4
--- HP drained per second while a hunter is within CATCH_DIST. The catch (loom +
--- checkpoint) only fires once Health hits 0, so a hunter has to *stay* on you —
--- you can break away and stop the bleed. ~4s of sustained contact = a catch.
-local HEALTH_DRAIN = 25
+-- Contact drain is `kind.drain` (18 / 25 / 34 HP per second within CATCH_DIST).
+-- The catch (loom + checkpoint) only fires once Health hits 0, so a hunter has
+-- to *stay* on you — you can break away and stop the bleed. Against a 100 HP
+-- bar that is roughly 5.5s of contact for a Stray and 3s for a Warden.
 local BLAST_SOUND_ID = "" -- user may supply a boom sound later; silent until set
 
 -- Summon: a gunshot alerts nearby hunters to the shooter's position, whether
@@ -57,7 +143,7 @@ local SIREN_SOUND_ID = "" -- user supplies; siren plays on the shot hunter
 -- deterministic shortest path (MazeNav.nextStep is a plain BFS, so identical
 -- start + identical goal = identical first step), which made the whole pack
 -- travel nose-to-tail down one corridor and read as a single animal. These four
--- break the symmetry; none of them changes HUNTER_COUNT or the speeds.
+-- break the symmetry; none of them changes the kind counts or the speeds.
 --
 -- Beyond this distance a chaser claims a *neighbouring* cell of the target's
 -- instead of the target's own, so the pack converges from several corridors.
@@ -79,24 +165,25 @@ local SPEED_VARIANCE = 0.12
 -- avoid stacking on them. Keyed by model so a dead hunter drops out.
 local activeRoots: { [Model]: BasePart } = {}
 
--- The body is the classic duck mesh, scaled up to loom and tinted near-black so
--- it reads as a silhouette rather than a bath toy. Scale is on a 2x2x2 host
--- part; 7 renders ~7.5 studs tall against a 5-stud player.
+-- The FALLBACK body: the classic duck mesh, used whenever a kind has no art in
+-- ServerStorage.HunterModels. Scale and tint come from the kind (see
+-- HUNTER_KINDS), on a 2x2x2 host part — a scale of 7 renders ~7.5 studs tall
+-- against a 5-stud player.
 local DUCK_MESH = "rbxassetid://9419831"
 local DUCK_TEXTURE = "rbxassetid://268365500"
-local DUCK_SCALE = 7
 -- This texture is NOT the yellow bath duck — it's already a dark mechanical duck
--- with red eyes painted on. So the tint only knocks it down; going much below
--- this flattens the panel detail and teal beak into a featureless black blob.
-local DUCK_TINT = Vector3.new(0.6, 0.58, 0.66) -- multiplies the texture
+-- with red eyes painted on. A kind's `tint` only knocks it down; going much
+-- below ~0.4 on every channel flattens the panel detail and teal beak into a
+-- featureless black blob.
 local DUCK_LIFT = 0.8 -- sits the mesh's feet on the collider's base
 
 -- The neon eyes sit directly over the texture's painted eye sockets, measured in
 -- Studio against a 5-stud reference at a level camera (the gameplay angle). The
 -- head surface at this line is ~2.65 deep, so 2.80 clears it by a hair — enough
 -- to render, tight enough that parallax doesn't drag the glow off the socket
--- when you look up at it. Re-measure all three if DUCK_SCALE changes: these are
--- studs, not proportions.
+-- when you look up at it. These are absolute studs, not proportions, so they are
+-- measured against the Stalker's scale of 7 — a kind with a very different scale
+-- will wear its eyes slightly off the socket.
 local EYE_X = 1.50
 local EYE_Y = 3.10
 local EYE_Z = 2.80
@@ -112,12 +199,93 @@ local function weldTo(root: BasePart, part: BasePart, offset: CFrame)
 	weld.Parent = part
 end
 
-local function buildHunter(): Model
+-- The user's art for this kind, welded onto the root — or nil if none is placed.
+--
+-- NOT ANCHORED, unlike every other art path in this codebase. A pickup and a
+-- salvage piece hang still, so anchoring is what keeps them put; a hunter MOVES,
+-- and an anchored part welded to a moving root either drags the root to a halt
+-- or tears free. Massless matters for the same reason: the Humanoid's walk speed
+-- should not depend on how heavy someone's mesh happens to be.
+--
+-- Scaled to `kind.scale` studs tall on its longest axis, for the same reason the
+-- gun is: Creator Store art is authored at any size, and a hunter twice the
+-- corridor's width cannot path through the maze it lives in.
+local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolean
+	local folder = ServerStorage:FindFirstChild(MODELS_FOLDER)
+	local template = kind.model and folder and folder:FindFirstChild(kind.model)
+	if not template then
+		return false
+	end
+
+	local clone = template:Clone()
+	-- Tool inherits from Model, so a Tool must be unwrapped rather than nested —
+	-- the same trap that had pickups auto-equipping onto players.
+	local art: Instance = clone
+	if clone:IsA("Tool") then
+		local wrapper = Instance.new("Model")
+		for _, child in clone:GetChildren() do
+			child.Parent = wrapper
+		end
+		clone:Destroy()
+		art = wrapper
+	end
+
+	for _, d in art:GetDescendants() do
+		if d:IsA("LuaSourceContainer") then
+			d:Destroy() -- free-model scripts would run the moment it enters the world
+		end
+	end
+
+	local parts: { BasePart } = {}
+	for _, d in art:GetDescendants() do
+		if d:IsA("BasePart") then
+			table.insert(parts, d)
+		end
+	end
+	if art:IsA("BasePart") then
+		table.insert(parts, art :: BasePart)
+	end
+	if #parts == 0 then
+		warn(`[Hunter] "{kind.model}" has no BasePart; falling back to the built-in body`)
+		art:Destroy()
+		return false
+	end
+
+	-- Fit to the kind's height before welding, while it is still a Model with a
+	-- bounding box to measure.
+	if art:IsA("Model") then
+		local extents = (art :: Model):GetExtentsSize()
+		local longest = math.max(extents.X, extents.Y, extents.Z)
+		if longest > 0.01 then
+			(art :: Model):ScaleTo((art :: Model):GetScale() * (kind.scale / longest))
+		end
+		;(art :: Model):PivotTo(root.CFrame * CFrame.new(0, DUCK_LIFT, 0))
+	end
+
+	for _, part in parts do
+		part.Anchored = false
+		part.CanCollide = false
+		part.CanQuery = false -- never blocks a shot or another hunter's sightline
+		part.Massless = true
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.Parent = part
+		part.Parent = model
+	end
+	art:Destroy()
+	return true
+end
+
+local function buildHunter(kind: HunterKind): Model
 	local model = Instance.new("Model")
 	model.Name = "Hunter"
+	model:SetAttribute("HunterKind", kind.name)
 
-	-- Invisible mover/collider. Kept at 3x6x3 so maze corridor navigation is
-	-- unchanged by the swap to a wider-looking body.
+	-- Invisible mover/collider. Kept at 3x6x3 for EVERY kind, however big the
+	-- art is: corridor navigation is tuned against this box, and a wider one
+	-- would wedge in the maze. The visual body is deliberately allowed to
+	-- overhang it.
 	local root = Instance.new("Part")
 	root.Name = "HumanoidRootPart"
 	root.Size = Vector3.new(3, 6, 3)
@@ -126,19 +294,23 @@ local function buildHunter(): Model
 	root.Parent = model
 	model.PrimaryPart = root
 
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Size = Vector3.new(2, 2, 2)
-	body.Parent = model
-	weldTo(root, body, CFrame.new(0, DUCK_LIFT, 0))
+	-- The duck is the FALLBACK, tinted and scaled per kind, so all three exist
+	-- and read apart with no assets at all.
+	if not attachArt(model, root, kind) then
+		local body = Instance.new("Part")
+		body.Name = "Body"
+		body.Size = Vector3.new(2, 2, 2)
+		body.Parent = model
+		weldTo(root, body, CFrame.new(0, DUCK_LIFT, 0))
 
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.FileMesh
-	mesh.MeshId = DUCK_MESH
-	mesh.TextureId = DUCK_TEXTURE
-	mesh.Scale = Vector3.new(DUCK_SCALE, DUCK_SCALE, DUCK_SCALE)
-	mesh.VertexColor = DUCK_TINT
-	mesh.Parent = body
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = DUCK_MESH
+		mesh.TextureId = DUCK_TEXTURE
+		mesh.Scale = Vector3.new(kind.scale, kind.scale, kind.scale)
+		mesh.VertexColor = kind.tint
+		mesh.Parent = body
+	end
 
 	-- Twin eyes. Only the first carries the light (one PointLight is enough for
 	-- the glow, and HunterController focuses its catch-cam on a part named "Eye").
@@ -147,14 +319,14 @@ local function buildHunter(): Model
 		eye.Name = if i == 1 then "Eye" else "Eye2"
 		eye.Shape = Enum.PartType.Ball
 		eye.Size = Vector3.new(EYE_SIZE, EYE_SIZE, EYE_SIZE)
-		eye.Color = EYE_COLOR
+		eye.Color = kind.eye
 		eye.Material = Enum.Material.Neon
 		eye.Parent = model
 		weldTo(root, eye, CFrame.new(sign * EYE_X, EYE_Y, -EYE_Z))
 
 		if i == 1 then
 			local eyeLight = Instance.new("PointLight")
-			eyeLight.Color = EYE_COLOR
+			eyeLight.Color = kind.eye
 			eyeLight.Range = 26
 			eyeLight.Brightness = 2.5
 			eyeLight.Parent = eye
@@ -166,6 +338,8 @@ local function buildHunter(): Model
 	sound.SoundId = "rbxassetid://137974203982962" -- robot 1
 	sound.Looped = true
 	sound.Volume = 0.8
+	-- Pitched per kind, so you can hear WHICH one is near before you see it.
+	sound.PlaybackSpeed = kind.dronePitch
 	sound.RollOffMode = Enum.RollOffMode.InverseTapered
 	sound.RollOffMaxDistance = 170
 	sound.RollOffMinDistance = 10
@@ -175,8 +349,8 @@ local function buildHunter(): Model
 	local hum = Instance.new("Humanoid")
 	hum.WalkSpeed = BASE_SPEED
 	hum.MaxSlopeAngle = 89
-	hum.MaxHealth = HUNTER_HITS
-	hum.Health = HUNTER_HITS
+	hum.MaxHealth = kind.hits
+	hum.Health = kind.hits
 	hum.Parent = model
 
 	-- Health bar: hidden while full, appears and drains as the gun hits land.
@@ -210,18 +384,41 @@ local function buildHunter(): Model
 	return model
 end
 
--- A far-ish random point on the maze floor (well away from `from`).
-local function farSpawn(from: Vector3): Vector3
+-- A cell centre inside `district`, preferring one well away from `from`.
+--
+-- Picks from the NAV GRAPH rather than from polar maths. The old version rolled
+-- a radius in one fixed band (180-480) and an angle, which straddled the middle
+-- district and clipped the other two — so the outer ring players spawn in, and
+-- the deep inner ring, both started nearly empty however many hunters existed.
+-- It could also land inside a wall or in the hub sanctuary, where a hunter does
+-- nothing but walk out. Every entry in `MazeNav.cellPos` is reachable by
+-- construction, and band 0 is skipped because the hub is a sanctuary.
+--
+-- `from` is the player spawn: nothing should appear on top of the room players
+-- are standing in during the countdown. That test is dropped rather than failed
+-- if a district has no cell far enough, since the inner district is small and
+-- entirely far from the rim anyway.
+local function farSpawn(from: Vector3, district: number): Vector3
 	local rng = Random.new()
-	for _ = 1, 24 do
-		local r = rng:NextNumber(180, 480)
-		local a = rng:NextNumber(0, math.pi * 2)
-		local p = Vector3.new(r * math.cos(a), 4, r * math.sin(a))
-		if (Vector3.new(p.X, 0, p.Z) - Vector3.new(from.X, 0, from.Z)).Magnitude > 220 then
-			return p
+	local far: { Vector3 } = {}
+	local any: { Vector3 } = {}
+	for key, pos in MazeNav.cellPos do
+		local band = MazeNav.bandOf(key)
+		if band == 0 or MazeNav.districtOf(band) ~= district then
+			continue
+		end
+		table.insert(any, pos)
+		if (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(from.X, 0, from.Z)).Magnitude > 220 then
+			table.insert(far, pos)
 		end
 	end
-	return Vector3.new(0, 4, 400)
+
+	local pool = if #far > 0 then far else any
+	if #pool == 0 then
+		return Vector3.new(0, 4, 400) -- no graph yet; only before the first build
+	end
+	local pick = pool[rng:NextInteger(1, #pool)]
+	return Vector3.new(pick.X, 4, pick.Z)
 end
 
 -- A dying hunter's blast: a bright Neon ball that expands and fades. No asset
@@ -396,7 +593,14 @@ function HunterService.Start()
 	end
 
 	-- Nearest player this hunter can currently SENSE (behind cover = unseen).
-	local function nearestSensed(pos: Vector3): (Player?, Model?)
+	-- `range` is per kind, and it is the stat that most changes how a district
+	-- plays. Sensing used to be line-of-sight with no limit at all: any hunter
+	-- saw any player down the whole length of a corridor. A Stray at 90 studs can
+	-- be walked past; a Warden at 220 owns the corridor it is standing in.
+	--
+	-- Distance is checked BEFORE the raycast, because the cheap test rejects most
+	-- players and `canSee` is a raycast per candidate per repath.
+	local function nearestSensed(pos: Vector3, range: number): (Player?, Model?)
 		local bestP, bestC, bestDist = nil, nil, math.huge
 		for _, plr in Players:GetPlayers() do
 			if outOfRound(plr) then
@@ -407,13 +611,14 @@ function HunterService.Start()
 			if not hrp then
 				continue
 			end
+			local d = (hrp.Position - pos).Magnitude
+			if d > range or d >= bestDist then
+				continue
+			end
 			if not canSee(pos, hrp.Position) then
 				continue -- a wall is between us: hidden from this hunter
 			end
-			local d = (hrp.Position - pos).Magnitude
-			if d < bestDist then
-				bestP, bestC, bestDist = plr, char, d
-			end
+			bestP, bestC, bestDist = plr, char, d
 		end
 		return bestP, bestC
 	end
@@ -499,12 +704,18 @@ function HunterService.Start()
 		end)
 	end
 
-	local function spawnHunter()
-		local hunter = buildHunter()
+	-- `district` is this hunter's HOME, not a leash: it decides only where the
+	-- hunter enters the maze, and it roams freely from there. Carrying it through
+	-- death and rebuild is what stops the spread collapsing over a round — every
+	-- respawn would otherwise land wherever the old single band was, and the map
+	-- would drift back to a clump in the middle.
+	local function spawnHunter(kind: HunterKind, district: number)
+		local hunter = buildHunter(kind)
 		local root = hunter.PrimaryPart :: BasePart
 		local hum = hunter:FindFirstChildOfClass("Humanoid") :: Humanoid
 		local growl = root:FindFirstChild("HunterDrone") :: Sound?
-		hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
+		hunter:SetAttribute("HomeDistrict", district)
+		hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position, district)))
 		hunter.Parent = workspace
 		-- Visible to peers for separation from the moment it exists; removed in
 		-- Died below, so a dead hunter stops repelling the living.
@@ -539,7 +750,11 @@ function HunterService.Start()
 				end
 			end
 			hunter:Destroy()
-			task.delay(RESPAWN_DELAY, spawnHunter) -- keep the maze populated
+			-- Same kind, same district, so the population of each is identical at
+			-- the end of a round and at the start.
+			task.delay(RESPAWN_DELAY, function()
+				spawnHunter(kind, district)
+			end)
 		end)
 
 		local lastKnownCell: number? = nil
@@ -553,8 +768,12 @@ function HunterService.Start()
 		local side = if rng:NextNumber() < 0.5 then -1 else 1
 		local speedScale = 1 + rng:NextNumber(-SPEED_VARIANCE, SPEED_VARIANCE)
 
+		-- Two multipliers, and they do different jobs. `speedScale` is this
+		-- hunter's own ±12% jitter, which strings a pack out; `kind.speedScale`
+		-- is the type's character, applied on top of the depth ramp so the
+		-- "faster the deeper" curve still shapes all three.
 		local function setSpeed(base: number)
-			hum.WalkSpeed = base * speedScale
+			hum.WalkSpeed = base * speedScale * kind.speedScale
 		end
 
 		-- Lateral offset that keeps this hunter out of its peers' pockets.
@@ -703,7 +922,7 @@ function HunterService.Start()
 						continue
 					end
 
-					local _, target = nearestSensed(root.Position)
+					local _, target = nearestSensed(root.Position, kind.sightRange)
 					local thrp = target and target:FindFirstChild("HumanoidRootPart") :: BasePart?
 					if thrp then
 						-- CHASE
@@ -753,7 +972,7 @@ function HunterService.Start()
 			if typeof(hp) ~= "number" then
 				return
 			end
-			hp -= HEALTH_DRAIN * dt
+			hp -= kind.drain * dt
 			if hp > 0 then
 				player:SetAttribute("Health", hp)
 				return
@@ -765,7 +984,7 @@ function HunterService.Start()
 		local function watchRestart(plr: Player)
 			table.insert(conns, plr:GetAttributeChangedSignal("Escaped"):Connect(function()
 				if plr:GetAttribute("Escaped") == false then
-					hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
+					hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position, district)))
 					lastKnownCell = nil
 					wanderTarget = nil
 				end
@@ -777,8 +996,12 @@ function HunterService.Start()
 		end
 	end
 
-	for _ = 1, HUNTER_COUNT do
-		spawnHunter()
+	-- One kind per district, indexed to match: HUNTER_KINDS[i] lives in
+	-- district i.
+	for district, kind in HUNTER_KINDS do
+		for _ = 1, kind.count do
+			spawnHunter(kind, district)
+		end
 	end
 
 	workspace:GetAttributeChangedSignal("MazeGeneration"):Connect(function()
@@ -788,7 +1011,12 @@ function HunterService.Start()
 		-- re-path within one REPATH tick.
 		for _, hunter in workspace:GetChildren() do
 			if hunter:IsA("Model") and hunter.Name == "Hunter" then
-				hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position)))
+				-- Re-homed into its own district on the NEW layout. Read back off
+				-- the attribute rather than closed over, because this loop walks
+				-- every hunter in the world, not one hunter's own scope.
+				local home = hunter:GetAttribute("HomeDistrict")
+				local district = if typeof(home) == "number" then home else #HUNTER_KINDS
+				hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position, district)))
 			end
 		end
 		-- A stale summon alert must not carry into a new round.

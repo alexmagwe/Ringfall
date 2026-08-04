@@ -297,9 +297,11 @@ gun reads as a broken one.
 | `GUN_RANGE` | 300 studs | `GunService.server.luau` (mirrored as `AIM_RANGE` in the controller) |
 | `FIRE_COOLDOWN` | 0.2s | `GunService.server.luau`, server-enforced |
 | `ASSIST_RADIUS` | 1.5 studs | `GunService.server.luau` — the miss-retry sphere |
-| `HUNTER_HITS` | 10 | `HunterService.server.luau` — shots to kill a hunter |
+| Shots to kill | 5 / 10 / 16 | `HunterService.server.luau` — per hunter kind (Stray / Stalker / Warden) |
 
-Ammo is found, never regenerates. A kill costs most of a full magazine.
+Ammo is found, never regenerates. A Stalker costs most of a full magazine and a
+Warden costs more than one, which is the point: the gun is for buying yourself a
+corridor, not for clearing a district.
 
 ## Shelf items
 
