@@ -20,7 +20,7 @@ Files:
 
 | | Warden (inner) | Stalker (middle) | Stray (outer) |
 | --- | --- | --- | --- |
-| Count | 3 | 3 | 4 |
+| Count | 4 | 6 | 8 |
 | Shots to kill | 16 | 10 | 5 |
 | Sight range | 220 | 140 | 90 |
 | Contact drain | 34 /s | 25 /s | 18 /s |
@@ -30,6 +30,15 @@ Files:
 | Eyes | violet | red | amber |
 | Approach sound | drone loop, 0.7 | drone loop, 1.0 | **silent** |
 | Hover | grounded | grounded | 4.5 studs |
+
+**Counts are weighted by danger, not by district size.** 18 hunters across 367
+cells is about one per 20; at 10 it was one per 37, which is a maze you can cross
+without meeting anything. The Stray crowds safely because it costs no health —
+more of them only means being reported more often. The Warden barely moves,
+because 16 shots, 34/s drain and a speed that outruns a sprint means six would
+make the descent a wall rather than a climax. Density lands at 18 / 20 / 25 cells
+per hunter, so the inner district stays sparsest, which is what "few, tough"
+should feel like.
 
 **They share one AI.** What differs is what they can do, and the escalation is
 the point: outward they are many, weak and half-blind; inward they are few,
@@ -280,9 +289,9 @@ from a level camera, which is the angle that matters in play.
 
 ## Behaviour
 
-Ten hunters spawn once `workspace.MazeReady` is set — 4 Strays, 3 Stalkers and
-3 Wardens, each at a `farSpawn` cell inside its own district and away from the
-player spawn (see [The three kinds](#the-three-kinds)).
+Eighteen hunters spawn once `workspace.MazeReady` is set — 8 Strays, 6 Stalkers
+and 4 Wardens, each at a `farSpawn` cell inside its own district and away from
+the player spawn (see [The three kinds](#the-three-kinds)).
 
 Each runs a loop every `REPATH` (0.7s) picking one of three states:
 

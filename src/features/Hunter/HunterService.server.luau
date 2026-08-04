@@ -26,6 +26,20 @@ HunterService.Priority = 15
 -- ONE ENEMY PER DISTRICT, indexed the way MazeNav.DISTRICT_BANDS is:
 -- 1 = inner, up to #DISTRICT_BANDS = outermost.
 --
+-- COUNTS ARE NOT UNIFORM, and raising them uniformly is the wrong instinct. 18
+-- hunters across 367 cells is roughly one per 20; at the old 10 it was one per
+-- 37, which is a maze you can cross without meeting anything.
+--
+-- The weighting follows how dangerous each kind is, not how big its district is:
+--   * Stray 8 — costs no health at all, so density only raises how often you
+--     are reported. Safe to crowd, and it makes the outer ring feel watched.
+--   * Stalker 6 — the baseline threat, doubled.
+--   * Warden 4 — barely moved. It takes 16 shots, drains 34/s and outruns a
+--     sprint this deep; six of them would turn the descent into a wall rather
+--     than a climax.
+-- Density per district ends up 18 / 20 / 25 cells each, so the inner stays the
+-- sparsest, which is what "few, tough" should feel like.
+--
 -- The three share one AI. What differs is what they can do, and the shape of the
 -- escalation is deliberate: OUTWARD they are many, weak and short-sighted;
 -- INWARD they are few, tough and see a long way. A player crossing a gate should
@@ -80,7 +94,7 @@ local HUNTER_KINDS: { HunterKind } = {
 	-- four of anything else.
 	{
 		name = "Warden",
-		count = 3,
+		count = 4,
 		-- NO ART, deliberately: the ducks ARE the enemy. Scale and tint are what
 		-- separate this one from the Stalker — bigger and violet against the
 		-- Stalker's red.
@@ -99,7 +113,7 @@ local HUNTER_KINDS: { HunterKind } = {
 	-- are read against, so it keeps every value the game was tuned on.
 	{
 		name = "Stalker",
-		count = 3,
+		count = 6,
 		-- No art: the duck at its original scale and tint, which is the look the
 		-- whole game was built around.
 		model = nil,
@@ -118,7 +132,7 @@ local HUNTER_KINDS: { HunterKind } = {
 	-- past once you know what you are doing.
 	{
 		name = "Stray",
-		count = 4,
+		count = 8,
 		-- THE ONE KIND WITH ART. A drone has to look like a machine, not a duck,
 		-- because it behaves like neither of the other two — it reports you
 		-- instead of attacking, and that has to be readable on sight.
