@@ -86,6 +86,18 @@ depend on how heavy someone's mesh is.
 against that box and a wider one wedges in the maze, so the visual body is
 deliberately allowed to overhang it.
 
+**The neon eyes are fallback-only.** Their offsets are absolute studs measured
+against the duck's painted sockets, so on someone else's model they would be two
+spheres floating at nothing. When art is attached the eyes are skipped and a
+`KindGlow` `PointLight` in the kind's colour goes on the root instead, so the
+colour tell survives. `HunterController`'s catch-cam looks for a part named
+`Eye` and falls back to `PrimaryPart`, so it costs only a slightly wider framing.
+
+**Pick art that has no legs to animate.** Parts are welded *rigidly* to the root
+— nothing here plays an animation, and a rigged R15 character would slide around
+the maze frozen in its T-pose. Anything that reads as floating or gliding works
+with that instead of against it: drones, orbs, hovering machines, wisps.
+
 ## The avatar
 
 The body is the duck mesh, scaled up and darkened so it reads as a looming

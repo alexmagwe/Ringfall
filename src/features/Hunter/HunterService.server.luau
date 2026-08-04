@@ -296,7 +296,8 @@ local function buildHunter(kind: HunterKind): Model
 
 	-- The duck is the FALLBACK, tinted and scaled per kind, so all three exist
 	-- and read apart with no assets at all.
-	if not attachArt(model, root, kind) then
+	local hasArt = attachArt(model, root, kind)
+	if not hasArt then
 		local body = Instance.new("Part")
 		body.Name = "Body"
 		body.Size = Vector3.new(2, 2, 2)
@@ -312,9 +313,22 @@ local function buildHunter(kind: HunterKind): Model
 		mesh.Parent = body
 	end
 
-	-- Twin eyes. Only the first carries the light (one PointLight is enough for
-	-- the glow, and HunterController focuses its catch-cam on a part named "Eye").
-	for i, sign in ipairs({ -1, 1 }) do
+	-- Twin eyes, FALLBACK BODY ONLY. Their offsets were measured in studs against
+	-- the duck mesh's painted sockets, so on someone else's model they would be
+	-- two neon spheres floating at nothing. Art brings its own face; all it needs
+	-- from here is the kind's colour, which the light below carries.
+	--
+	-- HunterController's catch-cam looks for a part named "Eye" and falls back to
+	-- PrimaryPart, so losing them costs nothing but a slightly wider framing.
+	if hasArt then
+		local glow = Instance.new("PointLight")
+		glow.Name = "KindGlow"
+		glow.Color = kind.eye
+		glow.Range = 26
+		glow.Brightness = 2.5
+		glow.Parent = root
+	end
+	for i, sign in ipairs(if hasArt then {} else { -1, 1 }) do
 		local eye = Instance.new("Part")
 		eye.Name = if i == 1 then "Eye" else "Eye2"
 		eye.Shape = Enum.PartType.Ball
