@@ -229,6 +229,13 @@ local SPOT_BEAM_IDLE = 0.88
 local SPOT_BEAM_LOCKED = 0.68
 -- The light inside the cone. An eighth of what the old flare was: enough to
 -- tint what the beam is crossing, not enough to read as an explosion.
+-- Vertical thickness as a fraction of the cone's horizontal width. A round
+-- cone is a fog bank: it fills the corridor floor to ceiling, you look down its
+-- axis through 90 studs of tinted volume, and it reads as murky dark red rather
+-- than as a beam. Flattening it also makes the picture honest — `nearestInBeam`
+-- flattens the angle to XZ, so a cone with real vertical spread was drawing a
+-- claim about height that nothing tests.
+local SPOT_BEAM_FLATTEN = 0.32
 local SPOT_LIGHT_IDLE = 0.6
 local SPOT_LIGHT_LOCKED = 1.6
 local SPOT_LIGHT_RANGE = 28
@@ -554,7 +561,10 @@ local function buildHunter(kind: HunterKind): Model
 
 		local cone = Instance.new("Part")
 		cone.Name = "ScanBeam"
-		cone.Size = Vector3.new(width, length, width)
+		-- Local X is the horizontal spread and local Z the vertical one, because
+		-- the weld below rotates local Z onto world -Y. Hence the flatten factor
+		-- on Z and not on X.
+		cone.Size = Vector3.new(width, length, width * SPOT_BEAM_FLATTEN)
 		cone.Color = SPOT_BEAM_COLOR
 		cone.Material = Enum.Material.Neon
 		cone.Transparency = SPOT_BEAM_IDLE
@@ -569,6 +579,14 @@ local function buildHunter(kind: HunterKind): Model
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.FileMesh
 		mesh.MeshId = CONE_MESH
+		-- SCALE, NOT Size. A SpecialMesh set to FileMesh ignores the part's Size
+		-- entirely and renders the mesh at `Scale` against its own authored
+		-- dimensions — which for this one is about a stud. The beam was built,
+		-- welded, aimed and trimmed perfectly, and drew as a red speck you could
+		-- not see from three studs away. Size still has to be right as well: it is
+		-- what `aimBeam` computes from, and what the two must be kept equal to.
+		mesh.Name = "ConeMesh"
+		mesh.Scale = cone.Size
 		mesh.Parent = cone
 
 		-- A Weld, NOT the WeldConstraint every other part uses, because this one
@@ -1096,6 +1114,7 @@ function HunterService.Start()
 		local beamLight = root:FindFirstChild("ScanLight") :: SpotLight?
 
 		local coneWeld = beam and beam:FindFirstChild("ScanBeamWeld") :: Weld?
+		local coneMesh = beam and beam:FindFirstChild("ConeMesh") :: SpecialMesh?
 		-- Half-width of the cone per stud of length, so a truncated beam keeps
 		-- the same angle instead of turning into a stubby wedge.
 		local coneSpread = if kind.spotArc then math.tan(math.rad(kind.spotArc)) else 0
@@ -1132,7 +1151,12 @@ function HunterService.Start()
 				end
 			end
 			local width = 2 * coneSpread * length
-			beam.Size = Vector3.new(width, length, width)
+			local size = Vector3.new(width, length, width * SPOT_BEAM_FLATTEN)
+			beam.Size = size
+			-- The mesh does the drawing and does not follow Size; see the build.
+			if coneMesh then
+				coneMesh.Scale = size
+			end
 			coneWeld.C0 = CFrame.new(0, 0, -length / 2) * CFrame.Angles(math.pi / 2, 0, 0)
 		end
 

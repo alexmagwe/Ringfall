@@ -179,10 +179,38 @@ that — including the chase, because a drone that quietly homed in on a player
 its beam was pointing away from would contradict the one thing it shows you.
 
 The cone is **drawn in the world**: a translucent red neon cone (`ScanBeam`,
-the stock cone mesh) welded facing forward for the full 90 studs, about 36 studs
-wide at the far end. It is `CanQuery = false` / `CanTouch = false`, so it is
+the stock cone mesh) welded facing forward for the full 90 studs, about 73 studs
+across at the far end. It is `CanQuery = false` / `CanTouch = false`, so it is
 invisible to the gun and to the hunters' own sight raycasts — it is light, not
 an object in the corridor.
+
+**Three things about the geometry are easy to get wrong, and all three were.**
+
+- **`SpecialMesh.Scale`, not `Part.Size`.** A `SpecialMesh` set to `FileMesh`
+  ignores the part's `Size` completely and renders the mesh at `Scale` against
+  its own authored dimensions — about one stud for this one. The beam was built,
+  welded, aimed and trimmed correctly and drew as a red speck. Both have to be
+  set and kept equal: `Size` is what `aimBeam` computes from, `Scale` is what
+  draws.
+- **It is flattened vertically** (`SPOT_BEAM_FLATTEN`, 0.32). A round cone is a
+  fog bank — it fills the corridor floor to ceiling and you look down its axis
+  through 90 studs of tinted volume, which reads as murky dark red rather than
+  as a beam. Flattening also makes the picture honest, since `nearestInBeam`
+  flattens the angle to XZ: a cone with full vertical spread was drawing a claim
+  about height that nothing tests. Local **X** is the horizontal spread and local
+  **Z** the vertical one, because the weld rotates local Z onto world −Y.
+- **It uses a `Weld`, not a `WeldConstraint`.** The beam is re-trimmed every
+  tick, which changes its length *and* its midpoint. A `WeldConstraint` freezes
+  the relative CFrame it was built with and offers nothing to update; a `Weld`
+  exposes `C0`.
+
+**The beam is trimmed at the first ring wall in front of it**, every tick, above
+every `continue` — one raycast per drone per repath, the cadence the loop
+already pays for sensing. Untrimmed at 90 studs it punched through two walls and
+glowed in corridors the drone could not see into, which is worse than no beam:
+the whole point is that what you see is what detects you. Only `Arc`/`Spoke`/
+`Perimeter` truncate it — dressing (rubble, pipes, vines) shares the folder and
+is knee-high scenery, and a vine must not chop the beam in half.
 
 **This is the fix for a threat you couldn't play around.** Omnidirectional
 sensing at 90 studs punished you with nothing to read and nothing to do about
