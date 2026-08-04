@@ -153,6 +153,22 @@ local function buildPickup(kind: string, modelName: string?, color: Color3, amou
 			end
 		end
 
+		-- NEUTRALISE SEATS. A `Seat` or `VehicleSeat` welds whoever touches it and
+		-- takes over their movement — and free-model vehicles are built around one.
+		-- This is the same class of bug as the Tool auto-equip that made picking up
+		-- a health kit drop the player through the floor: an invisible weld to
+		-- something this code is about to anchor or destroy.
+		--
+		-- `Disabled = true` rather than `:Destroy()`, because the seat is usually
+		-- load-bearing GEOMETRY (the free-model board is a Part and a VehicleSeat,
+		-- so destroying it removes half the deck). Disabling keeps the shape and
+		-- removes only the behaviour.
+		for _, d in model:GetDescendants() do
+				if d:IsA("Seat") or d:IsA("VehicleSeat") then
+						d.Disabled = true
+				end
+		end
+
 		-- Anchor everything so the whole thing stays rigid in place regardless of
 		-- the art's welds, never blocks a player, and (nested, not a direct child
 		-- of workspace) it can never be picked up as a Tool — the unwrap above is
