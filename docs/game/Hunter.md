@@ -107,6 +107,27 @@ spheres floating at nothing. When art is attached the eyes are skipped and a
 colour tell survives. `HunterController`'s catch-cam looks for a part named
 `Eye` and falls back to `PrimaryPart`, so it costs only a slightly wider framing.
 
+### How a player actually touches a hunter
+
+Three separate systems, and a hovering kind pulls them apart — worth knowing
+before setting `hover` on anything else.
+
+- **Shooting** hits the **art**, which is `CanQuery = true`. That is the opposite
+  of pickup and dressing art, and deliberate: being shootable is the whole point
+  of an enemy. With it false a bullet passed straight through the body you can
+  see, and the only hittable part was the invisible collider — which for the
+  Stray sits on the floor, entirely below its art. It cannot block a sightline
+  either way, because `canSee` filters `Include {maze}` and has never considered
+  anything but walls.
+- **The catch** works off the **collider**, not the art. `nearestReachable`
+  measures to the root, so contact happens when a player comes within
+  `CATCH_DIST` (7) of that 3×6×3 box on the ground — a drone floating overhead
+  still catches you from directly above, which reads as it dropping on you.
+- **Walking** is blocked by the collider too, so **you cannot walk under a
+  hovering hunter** even though it looks like you could. The drone occupies its
+  whole column. Raising the collider for fliers is not an option: corridor
+  navigation is tuned against 3×6×3.
+
 **Pick art that has no legs to animate.** Parts are welded *rigidly* to the root
 — nothing here plays an animation, and a rigged R15 character would slide around
 the maze frozen in its T-pose. Anything that reads as floating or gliding works

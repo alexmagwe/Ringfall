@@ -295,7 +295,14 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 	for _, part in parts do
 		part.Anchored = false
 		part.CanCollide = false
-		part.CanQuery = false -- never blocks a shot or another hunter's sightline
+		-- QUERYABLE, unlike pickup and dressing art. Being shootable is the whole
+		-- point of an enemy: with this false, a bullet passed straight through the
+		-- body you can see and the only hittable part was the invisible collider —
+		-- which for the hovering Stray sits on the floor, below its art entirely.
+		--
+		-- It cannot block a sightline either way: `canSee` filters
+		-- `Include {maze}`, so nothing but maze walls has ever been considered.
+		part.CanQuery = true
 		part.Massless = true
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = root
