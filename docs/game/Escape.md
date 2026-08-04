@@ -126,7 +126,40 @@ Three details that are easy to get wrong:
   clears `Escaped` and `teleportToStaging` unanchors, so both undo themselves on
   the way out.
 
-`onCharacterAdded` also anchors during `"Summary"`, not just `"Active"` — a
+### Joining mid-round must not freeze you
+
+`onCharacterAdded` anchors a spawning character **only while `RoundState ==
+"Summary"`**. It used to anchor during `"Active"` as well, and that shipped as a
+softlock: a player joining a live round was frozen mid-spawn-drop, floating a
+few studs above the staging floor, unable to move or do anything.
+
+The reasoning behind it was that a late joiner should wait the round out rather
+than drop into a live maze, and that `endRound`'s teleport-everyone step would
+free them. Both true — and both irrelevant, because **nothing ends a round on
+its own.** There is no run timer; the only exit from `"Active"` is somebody
+carrying the vault to the pad. The freeze therefore lasted until a stranger
+completed a full extraction, and on a server where nobody managed it, forever.
+The worse the players, the longer the punishment for joining.
+
+A joiner is safe unfrozen. They spawn in the staging room, which is a sanctuary
+hunters cannot enter, and the door is already open — so they can browse the
+shelf, wait, or walk into the maze and join late. Starting behind is a fair
+cost; being a statue is not.
+
+`"Summary"` still anchors and that one is safe, because it is **bounded**: the
+hold ends on `SUMMARY_TIMEOUT` at the latest, and it ends by teleporting and
+unanchoring every player in the server. Anchoring is only ever safe where
+something guarantees the release.
+
+Reproduced and fixed with a two-client playtest — join during `"Active"` and
+compare the joiner against a player who was already there:
+
+| | before | after |
+| --- | --- | --- |
+| established player | `anchored=false`, y=2.9 | `anchored=false`, y=2.9 |
+| mid-round joiner | `anchored=true`, y=7.5 | `anchored=false`, y=2.9 |
+
+`onCharacterAdded` anchors during `"Summary"` — a
 player who dies and respawns mid-board would otherwise be the only one free to
 move.
 

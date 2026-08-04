@@ -403,15 +403,31 @@ function EscapeService.Start()
 
 	local function onCharacterAdded(player: Player, character: Model)
 		resetState(player)
-		-- A late joiner mid-round waits out the Active phase frozen in the
-		-- staging room rather than dropping into a live maze — the next
-		-- round's teleport-everyone step (endRound) unanchors them same as
-		-- everyone else.
-		-- Frozen during a live round AND while the summary board is up: a player
-		-- who dies and respawns mid-board would otherwise be the one person free
-		-- to wander a maze that is about to be destroyed under them.
-		local roundState = workspace:GetAttribute("RoundState")
-		setCharacterAnchored(character, roundState == "Active" or roundState == "Summary")
+		-- SUMMARY ONLY. Anchoring during "Active" too was a softlock, and it
+		-- shipped: a player joining mid-round was frozen mid-spawn-drop —
+		-- floating a few studs over the staging floor, unable to move or do
+		-- anything at all.
+		--
+		-- The old comment claimed "the next round's teleport-everyone step
+		-- unanchors them same as everyone else", and that is true. What it
+		-- missed is that NOTHING ENDS A ROUND ON ITS OWN. There is no run
+		-- timer — the only exit from "Active" is somebody carrying the vault to
+		-- the pad. So the freeze lasted until a stranger completed a full
+		-- extraction, and on a server where nobody managed it, forever. The
+		-- worse the players, the longer the punishment for joining.
+		--
+		-- A joiner is safe unfrozen. They spawn in the staging room, which is a
+		-- sanctuary hunters cannot enter (HunterService.SANCTUARY_RADIUS), and
+		-- the door is already open — so they can browse the shelf, wait, or walk
+		-- into the maze and join the run late. Starting behind is a fair cost;
+		-- being a statue is not.
+		--
+		-- "Summary" still anchors, and that one is safe: it is bounded by
+		-- SUMMARY_TIMEOUT, and the hold ends by teleporting and unanchoring
+		-- every player in the server. Without it, someone who dies and respawns
+		-- mid-board would be the one person free to wander a maze that is about
+		-- to be destroyed under them.
+		setCharacterAnchored(character, workspace:GetAttribute("RoundState") == "Summary")
 	end
 
 	local function onPlayerAdded(player: Player)
