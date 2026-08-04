@@ -216,6 +216,14 @@ local SIREN_SOUND_ID = "" -- user supplies; siren plays on the shot hunter
 -- Inside it, everyone commits — the catch needs CATCH_DIST (7 studs), which a
 -- hunter loitering one cell away would never reach.
 local FLANK_RANGE = 60
+-- How long a chaser may hold its flank before committing anyway.
+--
+-- WITHOUT THIS, STANDING STILL MAKES YOU SAFE. The hold was written to resolve
+-- "the moment the target moves cell" — which never happens if the target simply
+-- stops. A player who stood still froze the whole pack at 60 studs, watching,
+-- never closing, never attacking. Flanking is still worth having, so it keeps
+-- its moment and then patience runs out.
+local HOLD_PATIENCE = 3
 -- Peers closer than this shove each other sideways.
 local SEPARATION_DIST = 12
 local SEPARATION_STRENGTH = 8 -- studs of lateral offset at full crowding
@@ -310,9 +318,26 @@ local function attachArt(model: Model, root: BasePart, kind: HunterKind): boolea
 		end
 	end
 
+	-- Strip everything that is not the LOOK of the thing.
+	--
+	-- Scripts, because a free model's own code runs the instant it enters the
+	-- world. GUIs, because toolbox props are built as props: the drone arrived
+	-- wearing a Sign with a text label on its nose and a 30-label "DroneHUD",
+	-- all of which render in world space on an enemy that is supposed to read as
+	-- a silhouette. And ClickDetectors / ProximityPrompts, because an enemy you
+	-- can click is not an enemy.
+	--
+	-- Decals, Textures, ParticleEmitters and Beams are deliberately KEPT — those
+	-- are the model's surface and effects, which is exactly what we want it for.
 	for _, d in art:GetDescendants() do
-		if d:IsA("LuaSourceContainer") then
-			d:Destroy() -- free-model scripts would run the moment it enters the world
+		if
+			d:IsA("LuaSourceContainer")
+			or d:IsA("SurfaceGui")
+			or d:IsA("BillboardGui")
+			or d:IsA("ClickDetector")
+			or d:IsA("ProximityPrompt")
+		then
+			d:Destroy()
 		end
 	end
 
@@ -892,6 +917,8 @@ function HunterService.Start()
 
 		local lastKnownCell: number? = nil
 		local wanderTarget: number? = nil
+		-- When this chaser last went out of commit range; see HOLD_PATIENCE.
+		local holdSince: number? = nil
 		-- Spotter state: when this hunter last raised the alert, and the light it
 		-- flares while it holds a lock. `KindGlow` exists only on art; the
 		-- fallback duck carries its light on the first eye instead, so the tell
@@ -1141,24 +1168,33 @@ function HunterService.Start()
 						if pcell then
 							setSpeed(math.clamp(BASE_SPEED + (maxBand - MazeNav.bandOf(pcell)) * SPEED_PER_BAND, BASE_SPEED, MAX_SPEED))
 							local distToTarget = (thrp.Position - root.Position).Magnitude
-							-- Reached its claimed approach cell but still too far to
-							-- commit? Hold it. That reads as cutting off an exit, and
-							-- it resolves itself the moment the target moves cell.
+							local far = distToTarget >= FLANK_RANGE
+
+							-- Flank while far, but only for HOLD_PATIENCE. The clock
+							-- starts when the target goes out of commit range and
+							-- runs while it stays there, so it cannot be reset by
+							-- the hunter arriving — which is what made a standing
+							-- player permanently safe.
+							holdSince = if far then (holdSince or os.clock()) else nil
+							local impatient = holdSince ~= nil and os.clock() - holdSince >= HOLD_PATIENCE
+
 							-- keepOutOfHub: a flank pick is a NEIGHBOUR of the target's
 							-- cell, so chasing someone in band 1 can claim the hub.
-							local approach = keepOutOfHub(chaseCell(pcell, distToTarget), root.Position)
-							if stepToward(approach) and distToTarget < FLANK_RANGE then
+							local goal = if far and not impatient then chaseCell(pcell, distToTarget) else pcell
+							if stepToward(keepOutOfHub(goal, root.Position)) and not far then
 								hum:MoveTo(thrp.Position) -- committed: close in
 							end
 						end
 					elseif lastKnownCell then
 						-- SEARCH the last place it sensed you
+						holdSince = nil
 						setSpeed(BASE_SPEED)
 						if stepToward(lastKnownCell) then
 							lastKnownCell = nil -- reached, gave up
 						end
 					else
 						-- WANDER
+						holdSince = nil
 						setSpeed(BASE_SPEED)
 						if not wanderTarget or stepToward(wanderTarget) then
 							wanderTarget = randomCell()

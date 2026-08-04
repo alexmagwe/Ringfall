@@ -86,6 +86,16 @@ they are the code-built duck at different scales and tints (violet at 8, red at
 art, because a drone has to look like a machine: it *behaves* like neither of the
 others, reporting you instead of attacking, and that has to be readable on sight.
 
+**Everything that is not the model's LOOK is stripped**: scripts (a free model's
+own code would run the instant it enters the world), `SurfaceGui` and
+`BillboardGui`, and `ClickDetector` / `ProximityPrompt`. Toolbox props are built
+as props — the drone arrived wearing a `Sign` with a text label on its nose and a
+30-label `DroneHUD`, all rendering in world space on something meant to read as a
+silhouette. An enemy you can click is also not an enemy.
+
+`Decal`, `Texture`, `ParticleEmitter` and `Beam` are deliberately **kept** —
+those are the surface and the effects, which is what the model is for.
+
 **Where art goes:** a `Folder` named **`HunterModels`** under **ServerStorage**,
 with a child named by a kind's `model` field. A Model, Tool, bare BasePart,
 `Accessory` or legacy `Hat` all work — everything is normalised into a Model
@@ -314,8 +324,19 @@ skips any root whose `Parent` is nil, so a hunter destroyed by some other path
 can't repel the living from beyond the grave.
 
 A chaser that reaches its claimed approach cell while still outside
-`FLANK_RANGE` simply holds position. That reads as cutting off an exit, and it
-resolves itself as soon as the target changes cell.
+`FLANK_RANGE` holds position, which reads as cutting off an exit — **but only for
+`HOLD_PATIENCE` (3s), and that bound is not optional.**
+
+The hold was originally written to resolve "as soon as the target changes cell",
+and that is true right up until the target doesn't. **A player who simply stood
+still froze the entire pack at 60 studs**, watching, never closing, never
+attacking. Standing still was the strongest defence in the game.
+
+The clock starts when the target goes *out of commit range* and runs while it
+stays there — deliberately not reset by the hunter arriving, since that reset is
+what let the stalemate last forever. When patience runs out the chaser drops the
+flank and paths to the target's own cell. Flanking still gets its three seconds,
+which is what it was for.
 
 ### Hunters cannot enter the vault chamber
 
