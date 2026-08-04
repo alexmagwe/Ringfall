@@ -9,8 +9,8 @@ local CmdrService = {}
 CmdrService.Priority = 2
 
 local function isAllowed(player: Player): boolean
-	for _, name in Constants.AllowedUsernames do
-		if player.Name == name then
+	for _, id in Constants.AllowedUserIds do
+		if player.UserId == id then
 			return true
 		end
 	end
