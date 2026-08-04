@@ -163,19 +163,29 @@ Dressing.OVERGROWN = {
 	growthMaterial = Enum.Material.Grass,
 	groundColor = Color3.fromRGB(72, 96, 58),
 	groundMaterial = Enum.Material.Grass,
-	-- MUST EXCEED MazeService's FLOOR_OVERHANG (30), which is how far the maze
-	-- floor itself reaches past the perimeter. At 26 it fell four studs short,
-	-- and those four studs of bare floor showed as a grey strip lying across the
-	-- entrance — the exact seam this setting exists to remove, just moved.
+	-- MUST STOP SHORT OF THE DOOR. The staging room's near side is open toward
+	-- the maze and sealed only by the Door at radius 541.5 (MazeService:
+	-- `(RADII[13] + STAGING_ROOM_NEAR_R) / 2` = `(534 + 549) / 2`). Anything the
+	-- ground disc draws past that is inside the room with the player while they
+	-- wait for the countdown.
 	--
-	-- 34 clears the floor's own rim at 564 and lands 4 studs onto the staging
-	-- plate (which begins at 556), so the only visible transition is grass to
-	-- room floor. That last overlap is the same trick MazeService uses there and
-	-- for the same reason: a circular edge and a straight one cannot meet
-	-- cleanly, and the sliver between them shows.
+	-- IT WAS 34, and that is 568 — 26 studs past the door, well into the room.
+	-- The player spent every countdown looking at a lawn, so the first step out
+	-- of the door revealed nothing. THE GRASS IS THE REVEAL: a sealed grey box
+	-- opens onto an overgrown ruin, and that only lands if the box is grey.
+	--
+	-- 4 puts the edge at 538, three and a half studs behind the closed door,
+	-- tucked under the perimeter wall so the disc's circular edge never shows
+	-- against the wall's arc segments.
+	--
+	-- The cost is deliberate and is the thing 34 was buying: the maze floor's own
+	-- apron reaches 564, so the corridor now floors in bare grey from the door
+	-- out to the staging plate. That strip used to read as a seam. It reads as a
+	-- threshold instead — the corridor is built structure, and it *should* be
+	-- concrete right up to the point where the ruin starts.
 	--
 	-- Growth itself still stops at the perimeter; only the ground reaches out.
-	groundOverhang = 34,
+	groundOverhang = 4,
 	-- Fewer loose clumps than before: the rubble now carries its own tufts, so
 	-- the growth that matters is already against the walls where players walk.
 	tuftClumps = 40,
