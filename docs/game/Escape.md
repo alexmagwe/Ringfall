@@ -215,15 +215,26 @@ The two moments that matter most in the round are both broadcast, and
   `state == "Staging"`. Without it a player stands in a sealed room with no idea
   the door is about to open. Receiving a `Staging` packet is also the cue to
   clear the previous round's results board and reset the timer.
+- **`RoundState` (same condition)** → the **mission briefing**, stacked directly
+  above that countdown: `OBJECTIVE` / `TAKE THE VAULT AT THE CENTRE` / *"…then
+  carry it back to this room. Nothing counts until you're home."* Nothing else in
+  the game ever states the objective — the compass gives a direction, not a goal —
+  and the second half is the part nobody guesses: taking the vault isn't the win,
+  carrying it home is. It rides the staging countdown because that is the one
+  window where the player has nothing to do and cannot be killed, so the briefing
+  costs them no play time and never has to interrupt a run to be read.
 - **`RoundEnded`** → `EscapeCinematicController` plays its camera pull-back over
   the maze, then `WinScreen.ui.luau` shows the results board: who got out with
   the vault, and every player's banked haul ranked highest-first with the local
   player's row highlighted.
 
-`WinScreen` was repurposed from the old personal escape screen. It is a passive
-scoreboard with **no button** — rounds restart automatically, so it dismisses
-itself when the next `Staging` packet arrives. It stays a dumb view: props in,
-nothing else (`tools/check-views` enforces this).
+`WinScreen` was repurposed from the old personal escape screen. It now carries a
+**CONTINUE** button: the round is held in `"Summary"` until every player has sent
+`Net.Continue` (see `waitForContinue` above), so the board no longer dismisses
+itself on a timer. Once *this* player has pressed it, `onContinue` is passed as
+`nil` and the button becomes a "waiting for the others" line — a pressed button
+never reads as an unresponsive one. It stays a dumb view: props in, nothing else
+(`tools/check-views` enforces this).
 
 ## What's now dead
 

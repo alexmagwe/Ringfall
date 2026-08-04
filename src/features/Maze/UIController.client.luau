@@ -124,6 +124,70 @@ local function App()
 			}),
 		}),
 
+		-- The mission, shown for as long as the doors are shut.
+		--
+		-- Nothing else in the game ever states the objective. A player spawned in
+		-- a sealed room, watched a countdown, and was released into a maze with no
+		-- reason to go anywhere in particular — the compass points inward, but a
+		-- direction is not a goal. Both halves have to be said, because the second
+		-- is the one nobody guesses: taking the vault is not the win, carrying it
+		-- back here is.
+		--
+		-- It lives on the staging countdown deliberately. That is the one window
+		-- where the player has nothing to do and cannot be killed, so the briefing
+		-- costs them nothing and never has to interrupt play to be read.
+		Briefing = if countdown ~= nil
+			then React.createElement("Frame", {
+				Size = UDim2.fromOffset(720, 150),
+				Position = UDim2.fromScale(0.5, 0.26),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				ZIndex = 60,
+			}, {
+				Layout = React.createElement("UIListLayout", {
+					FillDirection = Enum.FillDirection.Vertical,
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, 6),
+				}),
+
+				Heading = React.createElement("TextLabel", {
+					Size = UDim2.new(1, 0, 0, 22),
+					BackgroundTransparency = 1,
+					Text = "OBJECTIVE",
+					TextColor3 = Color3.fromRGB(150, 162, 176),
+					TextSize = 16,
+					FontFace = TIMER_FONT,
+					LayoutOrder = 1,
+				}),
+
+				Goal = React.createElement("TextLabel", {
+					Size = UDim2.new(1, 0, 0, 46),
+					BackgroundTransparency = 1,
+					Text = "TAKE THE VAULT AT THE CENTRE",
+					TextColor3 = Color3.fromRGB(255, 235, 190),
+					TextSize = 38,
+					FontFace = TIMER_FONT,
+					LayoutOrder = 2,
+				}, {
+					UIStroke = React.createElement("UIStroke", { Thickness = 2 }),
+				}),
+
+				Catch = React.createElement("TextLabel", {
+					Size = UDim2.new(1, 0, 0, 28),
+					BackgroundTransparency = 1,
+					Text = "…then carry it back to this room. Nothing counts until you're home.",
+					TextColor3 = Color3.fromRGB(206, 214, 222),
+					TextSize = 20,
+					FontFace = TIMER_FONT,
+					LayoutOrder = 3,
+				}, {
+					UIStroke = React.createElement("UIStroke", { Thickness = 1.5 }),
+				}),
+			})
+			else nil,
+
 		-- Staging countdown. Without this the player stands in a sealed room
 		-- with no idea the door is about to open.
 		Countdown = if countdown ~= nil
