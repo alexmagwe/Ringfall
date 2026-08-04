@@ -81,9 +81,10 @@ local function fallbackBoard(): Model
 	local model = Instance.new("Model")
 	model.Name = BOARD_NAME
 
+	local length = Constants.DECK_LENGTH
 	local deck = Instance.new("Part")
 	deck.Name = "Deck"
-	deck.Size = Vector3.new(1.8, 0.25, 5)
+	deck.Size = Vector3.new(length * 0.36, 0.22, length)
 	deck.Color = Constants.DECK_COLOR
 	deck.Material = Enum.Material.SmoothPlastic
 	deck.TopSurface = Enum.SurfaceType.Smooth
@@ -97,17 +98,18 @@ local function fallbackBoard(): Model
 
 	local grip = Instance.new("Part")
 	grip.Name = "Grip"
-	grip.Size = Vector3.new(1.5, 0.08, 4.4)
+	grip.Size = Vector3.new(length * 0.30, 0.07, length * 0.88)
 	grip.Color = Constants.TRIM_COLOR
 	grip.Material = Enum.Material.SmoothPlastic
-	grip.CFrame = deck.CFrame * CFrame.new(0, 0.16, 0)
+	grip.CFrame = deck.CFrame * CFrame.new(0, 0.14, 0)
 	grip.Parent = model
 
-	for _, offset in { Vector3.new(0.75, -0.3, 1.6), Vector3.new(-0.75, -0.3, 1.6), Vector3.new(0.75, -0.3, -1.6), Vector3.new(-0.75, -0.3, -1.6) } do
+	local wx, wz = length * 0.14, length * 0.31
+	for _, offset in { Vector3.new(wx, -0.24, wz), Vector3.new(-wx, -0.24, wz), Vector3.new(wx, -0.24, -wz), Vector3.new(-wx, -0.24, -wz) } do
 		local wheel = Instance.new("Part")
 		wheel.Name = "Wheel"
 		wheel.Shape = Enum.PartType.Cylinder
-		wheel.Size = Vector3.new(0.35, 0.6, 0.6)
+		wheel.Size = Vector3.new(0.26, 0.42, 0.42)
 		wheel.Color = Constants.TRIM_COLOR
 		wheel.Material = Enum.Material.SmoothPlastic
 		wheel.CFrame = deck.CFrame * CFrame.new(offset)
@@ -152,6 +154,18 @@ local function boardModel(): Model
 	if not model.PrimaryPart then
 		model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart", true)
 	end
+
+	-- NORMALISE THE ART'S SIZE. Without this the board's scale is whatever the
+	-- model happened to be exported at, so the feature looks right or wrong
+	-- depending on someone else's export settings — and a board authored in
+	-- metres swallows the rider. Longest horizontal axis becomes DECK_LENGTH;
+	-- the model keeps its proportions.
+	local extents = model:GetExtentsSize()
+	local longest = math.max(extents.X, extents.Z)
+	if longest > 0.01 then
+		model:ScaleTo(Constants.DECK_LENGTH / longest)
+	end
+
 	model.Name = BOARD_NAME
 	return model
 end

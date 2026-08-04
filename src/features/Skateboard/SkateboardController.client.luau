@@ -31,16 +31,23 @@ function SkateboardController.Start()
 	gui.IgnoreGuiInset = true
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	-- Bottom-left, stacked directly above the medkit readout (HealthController,
-	-- y = -16, 34 tall) so the two carried-item lines read as one column and
-	-- neither lands on the protected top-centre vitals or the bottom-right
-	-- ammo/haul corner.
+	-- BOTTOM CENTRE. It was bottom-left, "stacked above the medkit readout" —
+	-- which put it straight through the controls legend, whose own bottom-left
+	-- panel is 216px tall and grows every time any feature registers a key. The
+	-- readout landed on its own "Ride skateboard" row.
+	--
+	-- Centre is both free and the project default for a new feature surface. The
+	-- legend ends at x=327 and the ammo/haul readouts start at x=1387, so the
+	-- middle of the bottom edge is the one uncontested strip down here.
+	--
+	-- (The medkit readout has the same collision with the legend, latent because
+	-- it only shows while you hold a charge. Not this feature's to move.)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromOffset(300, 30)
-	label.Position = UDim2.new(0, 16, 1, -52)
-	label.AnchorPoint = Vector2.new(0, 1)
+	label.Size = UDim2.fromOffset(320, 30)
+	label.Position = UDim2.new(0.5, 0, 1, -18)
+	label.AnchorPoint = Vector2.new(0.5, 1)
 	label.BackgroundTransparency = 1
-	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextXAlignment = Enum.TextXAlignment.Center
 	label.TextColor3 = IDLE_COLOR
 	label.TextSize = 22
 	label.Font = Enum.Font.GothamBold
@@ -52,19 +59,94 @@ function SkateboardController.Start()
 	stroke.Color = Color3.fromRGB(0, 0, 0)
 	stroke.Parent = label
 
+	-- STOP THE LEGS. Roblox's default `Animate` script drives walk/run off
+	-- `Humanoid.MoveDirection`, and riding does not change that — so a rider
+	-- sprinted on the spot, on top of a board that was carrying them. The board
+	-- read as scenery stuck to their feet rather than as the thing moving them.
+	--
+	-- Disabling `Animate` and stopping every track leaves the rig in its rest
+	-- pose, which is exactly "standing on a board". Toggling `Disabled` back to
+	-- false re-runs the script from the top, which re-registers its idle — that
+	-- restart is what makes this reversible rather than a one-way trip.
+	--
+	-- Done CLIENT-SIDE, on the local character. Animation replicates outward from
+	-- whoever is animating, so stopping it here is what every other player sees
+	-- too; doing it from the server would fight the client that owns the rig.
+	--
+	-- `RIDE_ANIMATION` is the seam for a real skating pose. Empty by default,
+	-- because inventing an animation asset is not something this file can do —
+	-- see docs/game/Skateboard.md.
+	local ridePose: AnimationTrack? = nil
+
+	local function setRidePose(riding: boolean)
+		local char = player.Character
+		if not char then
+			return
+		end
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+		local animate = char:FindFirstChild("Animate")
+
+		if animate and animate:IsA("LuaSourceContainer") then
+			animate.Disabled = riding
+		end
+
+		if ridePose then
+			ridePose:Stop(0.15)
+			ridePose = nil
+		end
+
+		if not animator then
+			return
+		end
+		if not riding then
+			return
+		end
+
+		-- Stop AFTER disabling Animate, or it would start a fresh walk cycle on
+		-- the very next frame and undo this.
+		for _, track in animator:GetPlayingAnimationTracks() do
+			track:Stop(0.1)
+		end
+
+		if Constants.RIDE_ANIMATION == "" then
+			return
+		end
+		local anim = Instance.new("Animation")
+		anim.AnimationId = Constants.RIDE_ANIMATION
+		local ok, track = pcall(function()
+			return animator:LoadAnimation(anim)
+		end)
+		if not ok or not track then
+			return
+		end
+		ridePose = track
+		track.Looped = true
+		track.Priority = Enum.AnimationPriority.Action
+		track:Play(0.15)
+	end
+
 	local function update()
 		local has = player:GetAttribute(Constants.HAS_ATTRIBUTE) == true
 		label.Visible = has
+		local riding = player:GetAttribute(Constants.RIDING_ATTRIBUTE) == true
+		setRidePose(riding)
 		if not has then
 			return
 		end
-		local riding = player:GetAttribute(Constants.RIDING_ATTRIBUTE) == true
 		label.Text = if riding then "RIDING   [R] STEP OFF" else "SKATEBOARD   [R]"
 		label.TextColor3 = if riding then RIDING_COLOR else IDLE_COLOR
 	end
 
 	player:GetAttributeChangedSignal(Constants.HAS_ATTRIBUTE):Connect(update)
 	player:GetAttributeChangedSignal(Constants.RIDING_ATTRIBUTE):Connect(update)
+	-- A respawn hands us a brand-new rig with a brand-new enabled `Animate`. The
+	-- server drops the ride on CharacterAdded, but this side has to re-read
+	-- against the new character rather than trusting the old one's state.
+	player.CharacterAdded:Connect(function()
+		ridePose = nil
+		task.defer(update)
+	end)
 	update()
 
 	-- Why the board just refused, or just threw you off. Driven by the server's
@@ -72,7 +154,9 @@ function SkateboardController.Start()
 	-- pressing R twice on grass explains itself twice.
 	local notice = Instance.new("TextLabel")
 	notice.Size = UDim2.fromOffset(420, 34)
-	notice.Position = UDim2.new(0.5, 0, 1, -110)
+	-- Directly above the readout, clear of the pickup toast (which sits at
+	-- y = -70, 40 tall).
+	notice.Position = UDim2.new(0.5, 0, 1, -56)
 	notice.AnchorPoint = Vector2.new(0.5, 1)
 	notice.BackgroundTransparency = 1
 	notice.TextColor3 = RIDING_COLOR

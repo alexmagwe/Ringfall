@@ -33,11 +33,35 @@ return {
 	DECK_COLOR = Color3.fromRGB(38, 42, 50),
 	TRIM_COLOR = Color3.fromRGB(235, 170, 60),
 
+	-- Nose-to-tail length in studs, and the ONE number that decides how big the
+	-- board looks. An R15 character measures about 5.5 studs, so this is roughly
+	-- 0.72 of the rider's height.
+	--
+	-- Tuned by eye, in both directions. The first pass was 5 — as long as the
+	-- rider is tall, which read as a surfboard. Real-world proportions say a bit
+	-- under half the rider's height, and 3.2 landed there and looked like a toy
+	-- under a Roblox character. Blocky avatars have wide feet and a wide stance,
+	-- so the realistic number is the wrong one here; 4 is what actually sits
+	-- right underneath one.
+	--
+	-- User art is SCALED TO THIS TOO (see SkateboardService.boardModel), so a
+	-- model authored at any size lands at the same footprint instead of the
+	-- feature's look depending on how someone happened to export it.
+	DECK_LENGTH = 4,
+
 	-- How often the server re-checks which district a rider is standing in.
 	-- Cheap but not free (a nearest-cell scan per rider), and a player crossing
 	-- a gate at ~43 studs/s covers ~9 studs in this window — well inside a
 	-- 40-stud cell, so the board never keeps rolling a whole cell into grass.
 	DISTRICT_POLL = 0.2,
+
+	-- Optional skating pose, played on a loop while riding. EMPTY BY DEFAULT:
+	-- riding already stops the default walk/run cycle and leaves the rig in its
+	-- rest pose, which reads as standing on a board. A real pose needs an
+	-- animation uploaded to this game — the same "the user owns the assets" rule
+	-- as every model and sound here. Set it to an `rbxassetid://` and the
+	-- controller loads and plays it.
+	RIDE_ANIMATION = "",
 
 	-- Studs from the character's centre down to the deck's top face. Sized off
 	-- the default R15 rig; the art is welded, not physical, so this is purely

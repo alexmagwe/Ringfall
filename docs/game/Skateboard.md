@@ -38,6 +38,19 @@ load-bearing reason as every other pickup: a `Tool` anywhere in Workspace
 auto-equips off a Handle touch, and this one gets welded to the player's feet.
 See the comment in `PickupsService.buildPickup`.
 
+**Your art is rescaled, so its authored size doesn't matter.** `boardModel`
+measures the model's longest horizontal axis and `ScaleTo`s it until that equals
+`Constants.DECK_LENGTH`, keeping its proportions. Without this the board's scale
+is whatever someone's export settings happened to be — and a board authored in
+metres swallows the rider.
+
+`DECK_LENGTH` is the one number that decides how big the board looks, and it was
+tuned by eye in **both** directions. 5 (the first pass) is as long as the rider
+is tall and reads as a surfboard. Real-world proportions say a bit under half
+the rider's height — 3.2 — and that looked like a toy under a Roblox character.
+Blocky avatars have wide feet and a wide stance, so the realistic number is the
+wrong one here. **4** is what sits right underneath one.
+
 ## Where it rolls
 
 `Constants.BLOCKED_DISTRICTS` is keyed by MazeNav district index:
@@ -91,6 +104,43 @@ faster or slower publishes it and lets the movement owner apply it.
 | --- | --- | --- |
 | walk | 17.6 | 26.4 |
 | sprint | 28.6 | 42.9 |
+
+### The rider stops running
+
+Roblox's default `Animate` script drives walk/run off `Humanoid.MoveDirection`,
+and riding doesn't change that — so a rider **sprinted on the spot** on top of a
+board that was carrying them, and the board read as scenery stuck to their feet
+rather than as the thing moving them.
+
+`SkateboardController.setRidePose` disables `Animate` and stops every playing
+track while riding, which leaves the rig in its rest pose — exactly "standing on
+a board". Toggling `Disabled` back to `false` re-runs the script from the top and
+re-registers its idle; that restart is what makes this reversible rather than a
+one-way trip. **Order matters:** stop the tracks *after* disabling `Animate`, or
+it starts a fresh walk cycle on the very next frame and undoes it.
+
+Done **client-side**, on the local character. Animation replicates outward from
+whoever is animating, so stopping it here is what every other player sees too;
+driving it from the server would fight the client that owns the rig.
+
+`Constants.RIDE_ANIMATION` is the seam for a real skating pose — an
+`rbxassetid://` string, empty by default, loaded and looped at
+`AnimationPriority.Action` while riding. Empty is a working default, not a
+placeholder: inventing an animation asset isn't something this file can do.
+
+### Where the HUD sits
+
+Bottom **centre**, both the readout and the notice. It started bottom-left,
+"stacked above the medkit readout", which put it straight through the controls
+legend — whose panel is 216px tall and **grows every time any feature registers
+a key**. The readout landed on its own `Ride skateboard` row.
+
+The legend ends at x=327 and the ammo/haul readouts start at x=1387, so the
+middle of the bottom edge is the one uncontested strip down there. It is also
+the project default for a new feature surface.
+
+> The medkit readout has the same collision with the legend, latent only because
+> it shows while you hold a charge. Not this feature's to move.
 
 ### Auto-dismount
 
