@@ -61,6 +61,13 @@ function VaultController.Start()
 			vault = nil
 			return
 		end
+		-- Let go the moment it's taken. SalvageService plays the shrink-and-sink
+		-- from the server, and this PivotTo runs every Heartbeat off a rest pose
+		-- captured at bind — it would snap the model back out of the dais on each
+		-- frame and the collapse would never visibly happen.
+		if workspace:GetAttribute("VaultTaken") then
+			return
+		end
 
 		elapsed += dt
 		local bob = math.sin(elapsed * (math.pi * 2) / BOB_PERIOD) * BOB_AMPLITUDE

@@ -51,6 +51,14 @@ return {
 	DROP_SIZE = 2,
 	DROP_LIGHT_RANGE = 14,
 
+	-- Taken: the hub vault shrinks into its dais and is destroyed, rather than
+	-- lingering as a dark husk. A husk on a pedestal still reads as loot worth
+	-- grabbing, and the only feedback that it isn't is walking into it and having
+	-- nothing happen. The animation is what sells "taken" over "broken".
+	VAULT_SINK_TIME = 0.5,
+	VAULT_SINK_DEPTH = 4, -- studs below its resting pivot
+	VAULT_SINK_SCALE = 0.05, -- fraction of its *current* scale at the end
+
 	-- The vault, dropped as its own object. Also stays code-built: it is the one
 	-- thing in the maze that must never be mistaken for loot. No PointLight —
 	-- an occluded outline instead, so it's findable through the fog without
