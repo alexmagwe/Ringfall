@@ -25,6 +25,7 @@ Files:
 | Sight range | 220 | 140 | 90 |
 | Contact drain | 34 /s | 25 /s | 18 /s |
 | Speed scale | ×1.06 | ×1.0 | ×0.88 |
+| Attack | contact | contact | **spotter** |
 | Eyes | violet | red | amber |
 | Drone pitch | 0.7 | 1.0 | 1.35 |
 | Hover | grounded | grounded | 4.5 studs |
@@ -107,6 +108,39 @@ spheres floating at nothing. When art is attached the eyes are skipped and a
 colour tell survives. `HunterController`'s catch-cam looks for a part named
 `Eye` and falls back to `PrimaryPart`, so it costs only a slightly wider framing.
 
+### The Stray is a spotter, not a fighter
+
+**It deals no damage at all.** A drone that bites makes no sense; a drone that
+reports you does. Seeing you raises the same alert a gunshot raises —
+`HunterAlert` + `HunterAlertPos` at your position — which pulls every hunter
+within `SUMMON_RADIUS` (200) onto you for `SUMMON_WINDOW` (5s). It writes the
+same two attributes rather than growing a second summon path, so nothing else in
+the file had to learn about it.
+
+That makes the outer district a **stealth problem** instead of a weaker version
+of the same fight: being *seen* is the punishment, and what arrives is a Stalker.
+It is also the right lesson for the district players start in, since the whole
+maze runs on line of sight.
+
+Three things keep it fair:
+
+- **Throttled to `SPOT_REFRESH` (1s).** The alert is one shared workspace slot;
+  rewriting it every tick would pin the district on you permanently. That is the
+  cadence the vault alarm already refreshes at.
+- **It flares while it holds the lock** — brightness 8, range 60 on its light.
+  Being reported is otherwise invisible: no damage, no sound, and the
+  consequence arrives from off-screen seconds later, which reads as the game
+  cheating rather than as a mistake you made.
+- **It sets `SpottedAt` on the player**, a timestamp any HUD can read later.
+
+A spotter still chases, because following you is how it keeps you in sight — it
+just never converts the lock into damage.
+
+**One shared slot, one caveat.** The vault alarm also refreshes `HunterAlert`,
+so a Stray spotting someone while the alarm rings will briefly redirect hunters
+from the vault to that player. In practice the vault's own refresh targets
+whoever carries it, so the two usually agree.
+
 ### How a player actually touches a hunter
 
 Three separate systems, and a hovering kind pulls them apart — worth knowing
@@ -121,8 +155,8 @@ before setting `hover` on anything else.
   anything but walls.
 - **The catch** works off the **collider**, not the art. `nearestReachable`
   measures to the root, so contact happens when a player comes within
-  `CATCH_DIST` (7) of that 3×6×3 box on the ground — a drone floating overhead
-  still catches you from directly above, which reads as it dropping on you.
+  `CATCH_DIST` (7) of that 3×6×3 box on the ground. Contact kinds only: a
+  spotter returns before the drain and can never catch you by touch.
 - **Walking** is blocked by the collider too, so **you cannot walk under a
   hovering hunter** even though it looks like you could. The drone occupies its
   whole column. Raising the collider for fliers is not an option: corridor

@@ -59,7 +59,15 @@ export type HunterKind = {
 	hits: number, -- gunshots to kill
 	speedScale: number, -- multiplies the depth-scaled speed
 	sightRange: number, -- studs; beyond this it cannot sense you at all
-	drain: number, -- player HP per second in contact
+	-- How it hurts you.
+	--   "contact" — drains `drain` HP per second while within CATCH_DIST.
+	--   "spot"    — deals NO damage. Seeing you raises the alert instead, which
+	--               pulls every hunter within SUMMON_RADIUS onto your position.
+	--               A drone that bites makes no sense; a drone that reports you
+	--               does, and it turns its district into a stealth problem rather
+	--               than a weaker version of the same fight.
+	attack: "contact" | "spot",
+	drain: number, -- player HP per second in contact; unused when attack = "spot" 
 }
 
 local HUNTER_KINDS: { HunterKind } = {
@@ -77,6 +85,7 @@ local HUNTER_KINDS: { HunterKind } = {
 		hits = 16,
 		speedScale = 1.06,
 		sightRange = 220,
+		attack = "contact",
 		drain = 34,
 	},
 	-- MIDDLE — the original hunter, unchanged. It is the baseline the other two
@@ -92,6 +101,7 @@ local HUNTER_KINDS: { HunterKind } = {
 		hits = 10,
 		speedScale = 1,
 		sightRange = 140,
+		attack = "contact",
 		drain = 25,
 	},
 	-- OUTER — where players spawn and where they learn the game. Many, weak,
@@ -113,7 +123,10 @@ local HUNTER_KINDS: { HunterKind } = {
 		hits = 5,
 		speedScale = 0.88,
 		sightRange = 90,
-		drain = 18,
+		-- It is a drone: it reports you rather than eating you. Being SEEN is the
+		-- punishment, and what arrives next is a Stalker.
+		attack = "spot",
+		drain = 0,
 	},
 }
 
@@ -145,6 +158,15 @@ local BLAST_SOUND_ID = "" -- user may supply a boom sound later; silent until se
 -- or not it hit anything — the noise is what carries (GunService sets these
 -- attributes on every unsilenced shot; this file only consumes them, mirroring
 -- the existing EvacAlert idiom above).
+-- How often a spotter may refresh the alert while it holds a lock. The alert is
+-- one shared workspace slot, so an un-throttled spotter would rewrite it every
+-- tick and pin every hunter in range on the player permanently. One second
+-- matches the cadence the vault alarm already refreshes at.
+local SPOT_REFRESH = 1
+-- The spotter's tell. Its light flares while it has a lock, so "I have been
+-- seen" is readable from across a corridor rather than only in hindsight.
+local SPOT_GLOW_BRIGHTNESS = 8
+local SPOT_GLOW_RANGE = 60
 local SUMMON_WINDOW = 5 -- seconds other hunters beeline to the alert
 local SUMMON_RADIUS = 200 -- only hunters within this of the alert respond
 local SIREN_SOUND_ID = "" -- user supplies; siren plays on the shot hunter
@@ -810,6 +832,16 @@ function HunterService.Start()
 
 		local lastKnownCell: number? = nil
 		local wanderTarget: number? = nil
+		-- Spotter state: when this hunter last raised the alert, and the light it
+		-- flares while it holds a lock. `KindGlow` exists only on art; the
+		-- fallback duck carries its light on the first eye instead, so the tell
+		-- works either way rather than silently vanishing without a model.
+		local lastSpot = 0
+		local glow = root:FindFirstChild("KindGlow") :: PointLight?
+		if not glow then
+			local eye = hunter:FindFirstChild("Eye")
+			glow = eye and eye:FindFirstChildOfClass("PointLight") :: PointLight?
+		end
 
 		-- This hunter's fixed quirks. `flankSeed` picks which approach it claims
 		-- (stable, so it doesn't swap every repath and dither in a doorway);
@@ -973,8 +1005,39 @@ function HunterService.Start()
 						continue
 					end
 
-					local _, target = nearestSensed(root.Position, kind.sightRange)
+					local sensedPlayer, target = nearestSensed(root.Position, kind.sightRange)
 					local thrp = target and target:FindFirstChild("HumanoidRootPart") :: BasePart?
+
+					-- SPOTTING. A spotter still chases below — following you is how
+					-- it keeps you in sight — but what it does with the lock is
+					-- raise the alarm rather than close for a bite.
+					--
+					-- It writes the same two attributes a gunshot does, so every
+					-- hunter in SUMMON_RADIUS converges without this file growing a
+					-- second summon path. Throttled to SPOT_REFRESH: the alert is
+					-- one shared slot, and rewriting it every tick would pin the
+					-- whole district on the player permanently.
+					if kind.attack == "spot" and thrp and sensedPlayer then
+						local now = os.clock()
+						if now - lastSpot >= SPOT_REFRESH then
+							lastSpot = now
+							workspace:SetAttribute("HunterAlert", now)
+							workspace:SetAttribute("HunterAlertPos", thrp.Position)
+							-- Tell the player they were seen. Being reported is
+							-- invisible otherwise: no damage, no sound, and the
+							-- consequence arrives from off-screen several seconds
+							-- later, which reads as the game cheating.
+							sensedPlayer:SetAttribute("SpottedAt", now)
+						end
+						if glow then
+							glow.Brightness = SPOT_GLOW_BRIGHTNESS
+							glow.Range = SPOT_GLOW_RANGE
+						end
+					elseif kind.attack == "spot" and glow then
+						glow.Brightness = 2.5
+						glow.Range = 26
+					end
+
 					if thrp then
 						-- CHASE
 						local pcell = MazeNav.nearestCell(thrp.Position)
@@ -1014,6 +1077,11 @@ function HunterService.Start()
 		table.insert(conns, RunService.Heartbeat:Connect(function(dt)
 			local player, char, dist = nearestReachable(root.Position)
 			if not (player and char and dist < CATCH_DIST) then
+				return
+			end
+			-- A spotter never touches your health. Everything it does happens in
+			-- the AI loop, where seeing you raises the alert.
+			if kind.attack ~= "contact" then
 				return
 			end
 			-- Attacked: bleed the player's Health. Only a drop to 0 triggers the
