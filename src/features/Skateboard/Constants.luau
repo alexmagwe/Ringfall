@@ -34,7 +34,7 @@ return {
 	-- this place is actually spelled (capital B). Naming the child is the whole
 	-- point of the `model` field convention: the art can be called anything, and
 	-- this is what says which anything.
-	MODEL_NAME = "SkateBoard",
+	MODEL_NAME = "Skateboard",
 	DECK_COLOR = Color3.fromRGB(38, 42, 50),
 	TRIM_COLOR = Color3.fromRGB(235, 170, 60),
 

@@ -32,6 +32,16 @@ Files:
 
 ## Studio assets
 
+> **This folder is Rojo-managed.** `default.project.json` maps
+> `ServerStorage.PickupModels` to `assets/PickupModels.rbxm`, so Rojo replaces
+> the subtree from that file on every sync. **Dragging art in from Studio does
+> not stick** — Cmd+S saves the place, and the place is not the source of truth
+> here. Export the folder over `assets/PickupModels.rbxm` and commit it.
+>
+> Re-exporting straight after a sync can capture a **duplicate**: Rojo's copy
+> lands alongside the one you added by hand, and exporting then bakes both into
+> the file. De-dupe before exporting.
+
 **Optional models.** Place a `Folder` named `PickupModels` under **ServerStorage**
 with the art for each kind inside. The art's instance name is **not** matched to
 the kind — instead each `SPAWNS` entry in `Constants.luau` carries a `model`

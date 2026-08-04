@@ -29,7 +29,21 @@ Files:
 
 **Optional.** A model named `Skateboard` under
 `ServerStorage.PickupModels` is used for both the world pickup and the board
-welded under your feet. Without one, the feature builds a board in code (dark
+welded under your feet.
+
+> **`ServerStorage.PickupModels` IS ROJO-MANAGED.** `default.project.json` maps
+> it to `assets/PickupModels.rbxm`, so Rojo reconciles that folder against the
+> file on every sync and **anything you drag in from Studio is pruned**. Cmd+S
+> saves the place, but the place is not the authority for this folder — the
+> `.rbxm` is. Art added in Studio survived until the next sync and then vanished,
+> twice, before this was spotted.
+>
+> To make art here permanent: right-click `PickupModels` → **Save to File…** →
+> overwrite `assets/PickupModels.rbxm`, and commit it.
+>
+> `ServerStorage.HunterModels` is **not** in the project file, which is why
+> hunter art dragged into Studio does stick. `PickupModels` is the exception,
+> and it is the one that looks like a bug. Without one, the feature builds a board in code (dark
 deck, amber grip tape, four wheels) — the same "works before any art exists"
 rule the rest of Pickups follows.
 

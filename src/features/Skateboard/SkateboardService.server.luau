@@ -177,7 +177,10 @@ local function boardModel(): Model
 	-- metres swallows the rider. Longest horizontal axis becomes DECK_LENGTH;
 	-- the model keeps its proportions.
 	local extents = model:GetExtentsSize()
-	local longest = math.max(extents.X, extents.Z)
+	-- Longest of all three axes, matching the Pickups scaler so the board the
+	-- maze holds and the board under your feet cannot be measured differently.
+	-- Identical for a skateboard, which is longest nose-to-tail regardless.
+	local longest = math.max(extents.X, extents.Y, extents.Z)
 	if longest > 0.01 then
 -- `ScaleTo` is ABSOLUTE, not a multiplier. It sets the scale against the
 	-- size the model was AUTHORED at, so it has to be composed with the scale

@@ -193,7 +193,12 @@ local function buildPickup(
 		-- belongs rather than moving it and then growing it off the cell.
 		if scaleTo then
 			local extents = model:GetExtentsSize()
-			local longest = math.max(extents.X, extents.Z)
+			-- Longest of ALL THREE axes, not just the horizontal pair. A board
+			-- lying flat is longest horizontally either way, but an upright
+			-- object is not: the stamina cell is 0.2 wide and 0.4 tall, so
+			-- sizing off its width would have stretched it to twice the target
+			-- height to make its width match.
+			local longest = math.max(extents.X, extents.Y, extents.Z)
 			if longest > 0.01 then
 				if not model.PrimaryPart then
 					model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart", true)

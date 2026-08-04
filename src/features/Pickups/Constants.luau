@@ -33,7 +33,18 @@ return {
 		-- Ammo stays scattered. It is worth finding precisely BECAUSE the gun is
 		-- rented — a magazine you did not pay for extends a weapon you did.
 		{ kind = "Ammo", model = "Ammo", count = 4, color = Color3.fromRGB(240, 130, 60), amount = 6 },
-		{ kind = "Stamina", model = "StaminaBoost", count = 1, color = Color3.fromRGB(120, 230, 150), amount = 50 },
+		-- `scaleTo` because the art is a 0.2 x 0.4 x 0.2 union — a fifth of a stud,
+		-- floating three studs up in a forty-stud corridor. It was not small, it
+		-- was invisible. 3 puts it at about half a character's height, in the
+		-- same family as the 6-stud ammo crate without pretending a cell is a box.
+		{
+			kind = "Stamina",
+			model = "StaminaBoost",
+			count = 1,
+			color = Color3.fromRGB(120, 230, 150),
+			amount = 50,
+			scaleTo = 3,
+		},
 		{ kind = "HealthKit", model = "Emergency MedKit", count = 3, color = Color3.fromRGB(230, 70, 70), amount = 50 },
 	},
 	-- Granted alongside `HasGun` by `grant`. Unreferenced by SPAWNS today, since

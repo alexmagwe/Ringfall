@@ -36,7 +36,7 @@ export type Spawn = {
 	minSpawnDist: number?,
 	-- Toast text ("PICKED UP: …"). Defaults to `kind`.
 	label: string?,
-	-- Longest HORIZONTAL axis, in studs, to rescale the art to. nil leaves the
+	-- The model's LONGEST DIMENSION, in studs, to rescale the art to. nil leaves the
 	-- model at whatever size it was authored — which is right for art made for
 	-- this game and wrong for anything imported, where the scale is somebody
 	-- else's export setting. A feature that also renders the same art somewhere
