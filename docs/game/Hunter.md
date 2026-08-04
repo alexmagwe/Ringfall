@@ -270,6 +270,29 @@ so a Stray spotting someone while the alarm rings will briefly redirect hunters
 from the vault to that player. In practice the vault's own refresh targets
 whoever carries it, so the two usually agree.
 
+### Being switched off
+
+Hunters can be stunned, and the Hunter feature owns only the **mechanism** —
+`src/features/Hunter/Stun.luau`, `pulse(position, radius, seconds)` and
+`isStunned(model)`. The *reason* belongs to whoever calls it; today that is
+[EMP.md](EMP.md), and this file has never heard of it.
+
+That is the same seam `HunterAlert` already is: GunService raises the alert on
+every unsilenced shot and this file consumes it, with neither naming the other's
+feature. A stun is the mirror image, so it gets the same treatment rather than an
+EMP-shaped branch in the AI loop.
+
+A stunned hunter does not path, sense, spot, summon, answer a summon, drain you
+or catch you; its beam and both its sounds go dead. **Two places enforce it.**
+The AI loop bails out of the whole tick, above even the `MazeNav.ready` guard —
+threading an `if stunned` through the nine branches below it means every one of
+them has to remember. And the catch loop returns early, because it runs on its
+own `Heartbeat`: stopping the hunter *moving* still left it draining a player
+pressed against a statue.
+
+Full details, including why the times are `GetServerTimeNow()` and not
+`os.clock()`, are in [EMP.md](EMP.md#how-the-stun-works).
+
 ### How a player actually touches a hunter
 
 Three separate systems, and a hovering kind pulls them apart — worth knowing

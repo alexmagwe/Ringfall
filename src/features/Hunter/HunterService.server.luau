@@ -16,6 +16,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local ServerStorage = game:GetService("ServerStorage")
 
 local MazeNav = require(ReplicatedStorage.Features.Maze.MazeNav)
+local Stun = require(ReplicatedStorage.Features.Hunter.Stun)
 -- Cross-feature server require for the drop-on-catch path (dropHaul/
 -- dropVault), the same pattern EscapeService already uses for MazeService.
 local SalvageService = require(ServerScriptService.Features.Salvage.SalvageService)
@@ -239,6 +240,14 @@ local SPOT_BEAM_FLATTEN = 0.32
 local SPOT_LIGHT_IDLE = 0.6
 local SPOT_LIGHT_LOCKED = 1.6
 local SPOT_LIGHT_RANGE = 28
+-- A stunned spotter's cone. Not hidden outright (Transparency 1): a drone whose
+-- beam vanished would read as dead rather than as temporarily down, and the
+-- player needs to see it about to come back.
+local SPOT_BEAM_DEAD = 0.96
+-- The stun tell, and how often a switched-off hunter re-checks whether it is
+-- still switched off. Cheap: one attribute read, and only while stunned.
+local STUN_COLOR = Color3.fromRGB(120, 210, 255)
+local STUN_POLL = 0.2
 -- And it sounds an alarm for exactly as long as it holds you.
 --
 -- A LOOP, not a one-shot sting, and that choice is the teaching. The alarm
@@ -1059,6 +1068,10 @@ function HunterService.Start()
 		local hum = hunter:FindFirstChildOfClass("Humanoid") :: Humanoid
 		local growl = root:FindFirstChild("HunterDrone") :: Sound?
 		hunter:SetAttribute("HomeDistrict", district)
+		-- What makes this model findable by `Stun.pulse`. An attribute rather
+		-- than a name check: `Hunter` is a name anything in the place could take,
+		-- and a stun that silently missed would be very hard to see.
+		hunter:SetAttribute(Stun.TAG_ATTRIBUTE, true)
 		hunter:PivotTo(CFrame.new(farSpawn(spawnLocation.Position, district)))
 		hunter.Parent = workspace
 		-- Visible to peers for separation from the moment it exists; removed in
@@ -1158,6 +1171,34 @@ function HunterService.Start()
 				coneMesh.Scale = size
 			end
 			coneWeld.C0 = CFrame.new(0, 0, -length / 2) * CFrame.Angles(math.pi / 2, 0, 0)
+		end
+
+		-- The stun tell. `KindGlow` exists only on art; the fallback duck carries
+		-- its light on the first eye instead, so the tell works either way rather
+		-- than silently vanishing on whichever kind has no model.
+		local glow = root:FindFirstChild("KindGlow") :: PointLight?
+		if not glow then
+			local firstEye = hunter:FindFirstChild("Eye")
+			glow = firstEye and firstEye:FindFirstChildOfClass("PointLight") :: PointLight?
+		end
+		local glowColor = if glow then glow.Color else nil
+		local stunTellOn = false
+
+		-- Being switched off has to be legible from across a corridor, because
+		-- the whole value of the EMP is knowing you bought yourself a window.
+		-- Cold electric blue against every kind's warm eye colour, and the eyes
+		-- themselves go dark — a hunter whose lights are out is not looking.
+		local function setStunTell(on: boolean)
+			stunTellOn = on
+			if glow and glowColor then
+				glow.Color = if on then STUN_COLOR else glowColor
+				glow.Brightness = if on then 1.4 else (if kind.attack == "spot" then 1.2 else 2.5)
+			end
+			for _, part in hunter:GetChildren() do
+				if part:IsA("BasePart") and (part.Name == "Eye" or part.Name == "Eye2") then
+					part.Color = if on then STUN_COLOR else kind.eye
+				end
+			end
 		end
 
 		-- One place that decides how the cone looks, so the lock and the release
@@ -1266,6 +1307,44 @@ function HunterService.Start()
 
 		task.spawn(function()
 			while hunter.Parent do
+				-- SWITCHED OFF. Above everything, including the MazeNav guard:
+				-- a stunned hunter does not path, sense, spot, summon or answer a
+				-- summon, and its beam and alarm both go dead. It is a statue that
+				-- happens to still be shootable.
+				--
+				-- Handled by bailing out of the tick rather than by threading an
+				-- `if stunned` through the branches below, because there are nine
+				-- of them and every one would have to remember.
+				if Stun.isStunned(hunter) then
+					hum:MoveTo(root.Position)
+					hum.WalkSpeed = 0
+					if alarm and alarm.IsPlaying then
+						alarm:Stop()
+					end
+					if growl and growl.IsPlaying then
+						growl:Stop()
+					end
+					if beam then
+						beam.Transparency = SPOT_BEAM_DEAD
+					end
+					if beamLight then
+						beamLight.Brightness = 0
+					end
+					setStunTell(true)
+					task.wait(STUN_POLL)
+					continue
+				end
+				if stunTellOn then
+					-- Coming back: restore what the branch above stamped over.
+					-- Speed is re-set by the behaviour below on this very tick,
+					-- and the beam by `aimBeam` / `setBeamLocked`.
+					setStunTell(false)
+					setBeamLocked(false)
+					if growl and not growl.IsPlaying then
+						growl:Play()
+					end
+				end
+
 				if MazeNav.ready then
 					-- LOCK LAPSE, before anything can `continue` past it.
 					--
@@ -1458,6 +1537,12 @@ function HunterService.Start()
 		end)
 
 		table.insert(conns, RunService.Heartbeat:Connect(function(dt)
+			-- A stunned hunter you are standing inside must not drain you. The AI
+			-- loop stops it MOVING, but the catch runs on its own Heartbeat and
+			-- would happily keep biting a player pressed against a statue.
+			if Stun.isStunned(hunter) then
+				return
+			end
 			local player, char, dist = nearestReachable(root.Position)
 			if not (player and char and dist < CATCH_DIST) then
 				return
