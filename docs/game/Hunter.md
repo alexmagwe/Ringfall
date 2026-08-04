@@ -147,10 +147,26 @@ Three things keep it fair:
 - **Throttled to `SPOT_REFRESH` (1s).** The alert is one shared workspace slot;
   rewriting it every tick would pin the district on you permanently. That is the
   cadence the vault alarm already refreshes at.
-- **It flares while it holds the lock** — brightness 8, range 60 on its light.
-  Being reported is otherwise invisible: no damage, no sound, and the
-  consequence arrives from off-screen seconds later, which reads as the game
-  cheating rather than as a mistake you made.
+- **It flares and sounds an alarm while it holds the lock** — brightness 8 and
+  range 60 on its light, plus a looping `SpotAlarm` on its root
+  (`rbxassetid://9113865897`, Pro Sound Effects, whose own description reads
+  *Tracker / Triangulate / Warning / Indicator*). Being reported is otherwise
+  invisible: no damage, and the consequence arrives from off-screen seconds
+  later, which reads as the game cheating rather than as a mistake you made.
+
+  **A loop, not a sting, and that choice is the teaching.** The alarm starting
+  says "seen"; the alarm *stopping* says "you broke line of sight" — so the
+  escape rule is learned by ear, in the moment. A sting on acquire would announce
+  the problem and leave you guessing whether you had solved it. Its roll-off is
+  tighter than the body drone's (120 vs 170) so it tells you which way to break.
+
+  **The lapse check runs at the top of the AI loop, above every `continue`.**
+  It has to: the evac and summon branches both skip the rest of the tick, and a
+  spotter answers its own alert — so with the reset further down, a drone raised
+  the alarm once, summoned itself, and then either screamed for the whole
+  `SUMMON_WINDOW` after losing you or never refreshed the lock at all. Sensing
+  moved above those branches for the same reason, which also removed a duplicate
+  `nearestSensed` raycast per tick.
 - **It sets `SpottedAt` on the player**, a timestamp any HUD can read later.
 
 A spotter still chases, because following you is how it keeps you in sight — it

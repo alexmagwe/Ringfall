@@ -175,6 +175,20 @@ local SPOT_REFRESH = 1
 -- seen" is readable from across a corridor rather than only in hindsight.
 local SPOT_GLOW_BRIGHTNESS = 8
 local SPOT_GLOW_RANGE = 60
+-- And it sounds an alarm for exactly as long as it holds you.
+--
+-- A LOOP, not a one-shot sting, and that choice is the teaching. The alarm
+-- starting says "seen"; the alarm STOPPING says "you broke line of sight" — so
+-- the escape rule is learned by ear, in the moment, without a tutorial. A sting
+-- on acquire would announce the problem and then leave you guessing whether you
+-- had solved it.
+--
+-- Pro Sound Effects, "Computer Alarm Rapid Rizzy Beeps" — its own description
+-- reads Tracker / Triangulate / Warning / Indicator, which is the job exactly.
+local SPOT_SOUND_ID = "rbxassetid://9113865897"
+-- Tighter roll-off than the body drone (170), so the alarm is locatable: it
+-- should tell you WHICH direction to break toward, not just that one exists.
+local SPOT_SOUND_RANGE = 120
 local SUMMON_WINDOW = 5 -- seconds other hunters beeline to the alert
 local SUMMON_RADIUS = 200 -- only hunters within this of the alert respond
 local SIREN_SOUND_ID = "" -- user supplies; siren plays on the shot hunter
@@ -433,6 +447,21 @@ local function buildHunter(kind: HunterKind): Model
 	sound.RollOffMinDistance = 10
 	sound.Parent = root
 	sound:Play()
+
+	-- Spotters carry a second sound: the alarm they run while reporting you.
+	-- Built here rather than on demand so it replicates with the model and is
+	-- ready the first time a lock lands.
+	if kind.attack == "spot" and SPOT_SOUND_ID ~= "" then
+		local alarm = Instance.new("Sound")
+		alarm.Name = "SpotAlarm"
+		alarm.SoundId = SPOT_SOUND_ID
+		alarm.Looped = true
+		alarm.Volume = 1
+		alarm.RollOffMode = Enum.RollOffMode.InverseTapered
+		alarm.RollOffMaxDistance = SPOT_SOUND_RANGE
+		alarm.RollOffMinDistance = 8
+		alarm.Parent = root
+	end
 
 	local hum = Instance.new("Humanoid")
 	hum.WalkSpeed = BASE_SPEED
@@ -852,6 +881,7 @@ function HunterService.Start()
 		-- fallback duck carries its light on the first eye instead, so the tell
 		-- works either way rather than silently vanishing without a model.
 		local lastSpot = 0
+		local alarm = root:FindFirstChild("SpotAlarm") :: Sound?
 		local glow = root:FindFirstChild("KindGlow") :: PointLight?
 		if not glow then
 			local eye = hunter:FindFirstChild("Eye")
@@ -954,6 +984,27 @@ function HunterService.Start()
 		task.spawn(function()
 			while hunter.Parent do
 				if MazeNav.ready then
+					-- LOCK LAPSE, before anything can `continue` past it.
+					--
+					-- The alarm used to stop down in the spotting branch, which the
+					-- summon branch skips — and a spotter answers its own alert, so
+					-- it skipped its own reset and kept screaming for the whole
+					-- SUMMON_WINDOW after losing you. That breaks the one thing the
+					-- sound is for: the alarm stopping is how you learn you broke
+					-- line of sight.
+					--
+					-- The grace is two refresh periods, so a single tick of lost
+					-- sensing (a corner, a passing wall) does not stutter it.
+					if kind.attack == "spot" and os.clock() - lastSpot > SPOT_REFRESH * 2 then
+						if alarm and alarm.IsPlaying then
+							alarm:Stop()
+						end
+						if glow then
+							glow.Brightness = 2.5
+							glow.Range = 26
+						end
+					end
+
 					-- Containment, checked before any behaviour. Targeting already
 					-- ignores anyone past the perimeter, but a hunter can still
 					-- drift out on MoveTo momentum near the cut, or be shoved by
@@ -981,6 +1032,52 @@ function HunterService.Start()
 						stepToward(keepOutOfHub(MazeNav.nearestCell(root.Position), root.Position))
 						task.wait(nextRepath())
 						continue
+					end
+
+					-- SENSING AND SPOTTING, ABOVE the evac and summon branches.
+					--
+					-- Both of those `continue`, and a spotter answers its own
+					-- alert — so with this below them, a drone raised the alarm
+					-- once, immediately summoned itself, and never reached the code
+					-- that refreshes the lock. The alarm cut out two seconds later
+					-- while it was still staring straight at the player.
+					--
+					-- Sensing once here also drops a second `nearestSensed` call
+					-- per tick, which is a raycast per candidate.
+					local sensedPlayer, target = nearestSensed(root.Position, kind.sightRange)
+					local thrp = target and target:FindFirstChild("HumanoidRootPart") :: BasePart?
+
+					-- A spotter still chases below — following you is how it keeps
+					-- you in sight — but what it does with the lock is
+					-- raise the alarm rather than close for a bite.
+					--
+					-- It writes the same two attributes a gunshot does, so every
+					-- hunter in SUMMON_RADIUS converges without this file growing a
+					-- second summon path. Throttled to SPOT_REFRESH: the alert is
+					-- one shared slot, and rewriting it every tick would pin the
+					-- whole district on the player permanently.
+					if kind.attack == "spot" and thrp and sensedPlayer then
+						local now = os.clock()
+						if now - lastSpot >= SPOT_REFRESH then
+							lastSpot = now
+							workspace:SetAttribute("HunterAlert", now)
+							workspace:SetAttribute("HunterAlertPos", thrp.Position)
+							-- Tell the player they were seen. Being reported is
+							-- invisible otherwise: no damage, no sound, and the
+							-- consequence arrives from off-screen several seconds
+							-- later, which reads as the game cheating.
+							sensedPlayer:SetAttribute("SpottedAt", now)
+						end
+						if glow then
+							glow.Brightness = SPOT_GLOW_BRIGHTNESS
+							glow.Range = SPOT_GLOW_RANGE
+						end
+						-- Guarded on IsPlaying: calling Play on a looping sound
+						-- every tick restarts it from zero, which turns a steady
+						-- alarm into a stutter.
+						if alarm and not alarm.IsPlaying then
+							alarm:Play()
+						end
 					end
 
 					local alert = workspace:GetAttribute("EvacAlert")
@@ -1018,39 +1115,6 @@ function HunterService.Start()
 						stepToward(keepOutOfHub(MazeNav.nearestCell(sPos :: Vector3), root.Position))
 						task.wait(nextRepath())
 						continue
-					end
-
-					local sensedPlayer, target = nearestSensed(root.Position, kind.sightRange)
-					local thrp = target and target:FindFirstChild("HumanoidRootPart") :: BasePart?
-
-					-- SPOTTING. A spotter still chases below — following you is how
-					-- it keeps you in sight — but what it does with the lock is
-					-- raise the alarm rather than close for a bite.
-					--
-					-- It writes the same two attributes a gunshot does, so every
-					-- hunter in SUMMON_RADIUS converges without this file growing a
-					-- second summon path. Throttled to SPOT_REFRESH: the alert is
-					-- one shared slot, and rewriting it every tick would pin the
-					-- whole district on the player permanently.
-					if kind.attack == "spot" and thrp and sensedPlayer then
-						local now = os.clock()
-						if now - lastSpot >= SPOT_REFRESH then
-							lastSpot = now
-							workspace:SetAttribute("HunterAlert", now)
-							workspace:SetAttribute("HunterAlertPos", thrp.Position)
-							-- Tell the player they were seen. Being reported is
-							-- invisible otherwise: no damage, no sound, and the
-							-- consequence arrives from off-screen several seconds
-							-- later, which reads as the game cheating.
-							sensedPlayer:SetAttribute("SpottedAt", now)
-						end
-						if glow then
-							glow.Brightness = SPOT_GLOW_BRIGHTNESS
-							glow.Range = SPOT_GLOW_RANGE
-						end
-					elseif kind.attack == "spot" and glow then
-						glow.Brightness = 2.5
-						glow.Range = 26
 					end
 
 					if thrp then
