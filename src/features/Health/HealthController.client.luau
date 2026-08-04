@@ -18,7 +18,6 @@ local HealthController = {}
 
 local FULL_COLOR = Color3.fromRGB(80, 200, 100)
 local LOW_COLOR = Color3.fromRGB(225, 55, 55)
-local MEDKIT_COLOR = Color3.fromRGB(235, 120, 120)
 local MEDKIT_ACTION = "HealthUseMedkit"
 local MEDKIT_KEY = Enum.KeyCode.H
 
@@ -85,34 +84,12 @@ function HealthController.Start()
 	player:GetAttributeChangedSignal("MaxHealth"):Connect(update)
 	update()
 
-	-- Medkit charges. Bottom-left, deliberately clear of the protected
-	-- top-centre vitals column and of the bottom-right ammo/haul readouts.
-	local medkit = Instance.new("TextLabel")
-	medkit.Size = UDim2.fromOffset(240, 34)
-	medkit.Position = UDim2.new(0, 16, 1, -16)
-	medkit.AnchorPoint = Vector2.new(0, 1)
-	medkit.BackgroundTransparency = 1
-	medkit.TextXAlignment = Enum.TextXAlignment.Left
-	medkit.TextColor3 = MEDKIT_COLOR
-	medkit.TextSize = 24
-	medkit.Font = Enum.Font.GothamBold
-	medkit.Text = ""
-	medkit.Visible = false
-	medkit.Parent = gui
-	local medkitStroke = Instance.new("UIStroke")
-	medkitStroke.Thickness = 2
-	medkitStroke.Color = Color3.fromRGB(0, 0, 0)
-	medkitStroke.Parent = medkit
-
-	local function updateMedkit()
-		local charges = player:GetAttribute("MedCharges")
-		local count = if typeof(charges) == "number" then charges else 0
-		medkit.Visible = count > 0
-		medkit.Text = string.format("MEDKIT x%d   [H]", count)
-	end
-
-	player:GetAttributeChangedSignal("MedCharges"):Connect(updateMedkit)
-	updateMedkit()
+	-- The medkit charge readout moved to the shared carried-kit strip
+	-- (Features.Loadout, declared in this feature's Loadout.luau). It used to be
+	-- a bespoke label here at the bottom left, underneath the controls legend —
+	-- and the legend sizes to its content, so every keybind any feature added
+	-- grew it downward until this line was drawn inside its panel and could not
+	-- be read. Where a row goes is now one owner's decision, not five.
 
 	-- Request only: the server re-checks the charge count and that you're
 	-- actually hurt before anything is spent.

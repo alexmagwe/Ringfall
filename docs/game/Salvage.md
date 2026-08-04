@@ -16,7 +16,10 @@ Files:
 - `src/features/Salvage/SalvageService.server.luau` — scatters salvage,
   binds the Vault's `Touched`, runs the alarm-refresh loop, and exposes
   `addHaul` / `dropHaul` / `dropVault` for other features.
-- `src/features/Salvage/SalvageController.client.luau` — the bottom-right
+- `src/features/Salvage/SalvageController.client.luau` — the vault callout. The
+  HAUL readout itself moved to the shared [Loadout](Loadout.md) strip (declared
+  in `Salvage/Loadout.luau`), which also owns its flash-on-rise; it used to be
+  a bottom-right
   Haul HUD. Raw instances, no React (see CLAUDE.md: gameplay HUDs are raw
   instances).
 - `src/features/Salvage/CompassController.client.luau` — the compass arrow

@@ -31,42 +31,16 @@ function EMPController.Start()
 	gui.IgnoreGuiInset = true
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	-- Bottom centre, above the skateboard readout (which sits at y = -18, 30
-	-- tall). The bottom-left is the controls legend, which grows every time any
-	-- feature registers a key, and the bottom-right is the ammo/haul corner —
-	-- the middle is the only strip down here that nothing else claims.
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromOffset(320, 30)
-	label.Position = UDim2.new(0.5, 0, 1, -52)
-	label.AnchorPoint = Vector2.new(0.5, 1)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = Constants.COLOR
-	label.TextSize = 22
-	label.Font = Enum.Font.GothamBold
-	label.Text = ""
-	label.Visible = false
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Parent = label
-
-	local function update()
-		local charges = player:GetAttribute(Constants.CHARGES_ATTRIBUTE)
-		local count = if typeof(charges) == "number" then charges else 0
-		label.Visible = count > 0
-		label.Text = string.format("EMP x%d   [F]", count)
-	end
-
-	player:GetAttributeChangedSignal(Constants.CHARGES_ATTRIBUTE):Connect(update)
-	update()
+	-- The charge readout moved to the shared carried-kit strip (Features.Loadout,
+	-- declared in this feature's Loadout.luau). Five features each choosing their
+	-- own bottom-screen offset had produced four overlapping pairs.
 
 	-- What the burst actually did. Driven by the server's one-shot signal rather
 	-- than by the charge count, because "NOTHING IN RANGE" and "3 DISABLED" both
 	-- spend exactly one charge and have to read differently.
 	local result = Instance.new("TextLabel")
 	result.Size = UDim2.fromOffset(420, 34)
-	result.Position = UDim2.new(0.5, 0, 1, -90)
+	result.Position = UDim2.new(0.5, 0, 1, -164)
 	result.AnchorPoint = Vector2.new(0.5, 1)
 	result.BackgroundTransparency = 1
 	result.TextColor3 = Constants.COLOR

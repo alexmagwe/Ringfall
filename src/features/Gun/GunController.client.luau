@@ -85,30 +85,9 @@ function GunController.Start()
 	reticleStroke.Transparency = 0.15
 	reticleStroke.Parent = reticle
 
-	local ammoLabel = Instance.new("TextLabel")
-	ammoLabel.Size = UDim2.fromOffset(160, 36)
-	ammoLabel.Position = UDim2.new(1, -20, 1, -20)
-	ammoLabel.AnchorPoint = Vector2.new(1, 1)
-	ammoLabel.BackgroundTransparency = 1
-	ammoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	ammoLabel.TextSize = 26
-	ammoLabel.Font = Enum.Font.GothamBold
-	ammoLabel.TextXAlignment = Enum.TextXAlignment.Right
-	ammoLabel.Text = "AMMO 0"
-	ammoLabel.Visible = false
-	ammoLabel.Parent = gui
-	local ammoStroke = Instance.new("UIStroke")
-	ammoStroke.Thickness = 2
-	ammoStroke.Color = Color3.fromRGB(0, 0, 0)
-	ammoStroke.Parent = ammoLabel
-
-	local function updateAmmoLabel()
-		local ammo = player:GetAttribute("Ammo")
-		ammoLabel.Text = `AMMO {if typeof(ammo) == "number" then ammo else 0}`
-	end
-
-	player:GetAttributeChangedSignal("Ammo"):Connect(updateAmmoLabel)
-	updateAmmoLabel()
+	-- The ammo readout moved to the shared carried-kit strip (Features.Loadout,
+	-- declared in this feature's Loadout.luau). It shared the bottom-right corner
+	-- with Salvage's HAUL line and the two overlapped.
 
 	-- Named-model check, matching how GunService judges a hit: the Gun feature
 	-- never requires HunterService, it only knows a Model called "Hunter". This
@@ -166,7 +145,6 @@ function GunController.Start()
 	RunService.RenderStepped:Connect(function()
 		local hasGun = player:GetAttribute("HasGun") == true
 		reticle.Visible = hasGun
-		ammoLabel.Visible = hasGun
 		if not hasGun then
 			return
 		end

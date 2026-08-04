@@ -42,7 +42,12 @@ function PickupsController.Start()
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromOffset(420, 40)
-	label.Position = UDim2.new(0.5, 0, 1, -70)
+	-- Bottom-centre TOAST BAND, shared with the other transient flashes. The
+	-- three of them (this, the EMP result, the skateboard notice) are spaced a
+	-- full row apart rather than a few pixels, because they were picked
+	-- independently at -70/-90/-56 and half-overlapped each other. Persistent
+	-- readouts live in the Loadout strip; only momentary ones belong here.
+	label.Position = UDim2.new(0.5, 0, 1, -120)
 	label.AnchorPoint = Vector2.new(0.5, 1)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.fromRGB(255, 230, 160)

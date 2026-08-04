@@ -12,8 +12,6 @@ local TweenService = game:GetService("TweenService")
 
 local SalvageController = {}
 
-local BASE_COLOR = Color3.fromRGB(255, 230, 160)
-local FLASH_COLOR = Color3.fromRGB(255, 255, 255)
 
 function SalvageController.Start()
 	local player = Players.LocalPlayer
@@ -23,49 +21,10 @@ function SalvageController.Start()
 	gui.ResetOnSpawn = false
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromOffset(240, 40)
-	label.Position = UDim2.new(1, -12, 1, -12)
-	label.AnchorPoint = Vector2.new(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextXAlignment = Enum.TextXAlignment.Right
-	label.TextColor3 = BASE_COLOR
-	label.TextSize = 28
-	label.Font = Enum.Font.GothamBold
-	label.Text = "HAUL 0"
-	-- Hidden until you are actually carrying something. "HAUL 0" is a readout of
-	-- nothing: it sits in the corner for the whole first leg of every run saying
-	-- only that the run has not started paying yet, which the player knows. It
-	-- earns its place the moment the number moves.
-	label.Visible = false
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Parent = label
-
-	-- Same fade idiom PickupsController uses for its toast: a quick tween in,
-	-- a slower tween back to rest.
-	local function flash()
-		local fadeIn = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		local fadeOut = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		TweenService:Create(label, fadeIn, { TextColor3 = FLASH_COLOR }):Play()
-		task.delay(0.1, function()
-			TweenService:Create(label, fadeOut, { TextColor3 = BASE_COLOR }):Play()
-		end)
-	end
-
-	local lastHaul = 0
-	player:GetAttributeChangedSignal("Haul"):Connect(function()
-		local haul = player:GetAttribute("Haul")
-		local amount = if typeof(haul) == "number" then haul else 0
-		label.Text = "HAUL " .. tostring(amount)
-		label.Visible = amount > 0
-		if amount > lastHaul then
-			flash()
-		end
-		lastHaul = amount
-	end)
+	-- The HAUL readout moved to the shared carried-kit strip (Features.Loadout,
+	-- declared in this feature's Loadout.luau), which also owns the flash-on-rise
+	-- that used to live here. It shared the bottom-right corner with the gun's
+	-- ammo line and the two overlapped.
 
 	-- Objective callout on taking the vault. Without it the biggest turn in the
 	-- round — you now hold the thing everyone wants, every hunter is coming, and

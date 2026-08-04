@@ -153,7 +153,12 @@ placeholder: inventing an animation asset isn't something this file can do.
 
 ### Where the HUD sits
 
-Bottom **centre**, both the readout and the notice. It started bottom-left,
+**The readout moved out of this feature entirely** — it is a row in the shared
+[Loadout](Loadout.md) strip now, declared in `Skateboard/Loadout.luau`. Only the
+transient notice is still drawn here.
+
+The history is worth keeping, because it is why that strip exists. It started
+bottom-left,
 "stacked above the medkit readout", which put it straight through the controls
 legend — whose panel is 216px tall and **grows every time any feature registers
 a key**. The readout landed on its own `Ride skateboard` row.

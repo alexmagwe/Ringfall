@@ -35,6 +35,7 @@ one-way dependency rule that keeps the framework updatable.
 | [Gun.md](Gun.md) | Client-request/server-authority gun — ammo economy, the `Humanoid.TakeDamage` seam, the summon trigger |
 | [LookBack.md](LookBack.md) | Hold-Q glance behind, and how it avoids inverting movement |
 | [Controls.md](Controls.md) | Key legend + the `Controls.luau` registration convention |
+| [Loadout.md](Loadout.md) | The carried-kit strip — one owner for "what am I holding", and why eight features each picking a screen corner silently hid the medkit line |
 | [Clicker.md](Clicker.md) | Coin Clicker — server-authoritative currency loop (practice game) |
 | [PlayerData.md](PlayerData.md) | Profile persistence + the `registerTemplate` discovery convention |
 | [Settings.md](Settings.md) | Settings registry, server validation, the `Settings.luau` discovery convention |

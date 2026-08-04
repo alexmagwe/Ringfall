@@ -19,7 +19,6 @@ local SkateboardController = {}
 
 local RIDE_ACTION = "SkateboardToggleRide"
 local RIDE_KEY = Enum.KeyCode.R
-local IDLE_COLOR = Color3.fromRGB(200, 208, 216)
 local RIDING_COLOR = Color3.fromRGB(235, 170, 60)
 
 function SkateboardController.Start()
@@ -31,33 +30,9 @@ function SkateboardController.Start()
 	gui.IgnoreGuiInset = true
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	-- BOTTOM CENTRE. It was bottom-left, "stacked above the medkit readout" —
-	-- which put it straight through the controls legend, whose own bottom-left
-	-- panel is 216px tall and grows every time any feature registers a key. The
-	-- readout landed on its own "Ride skateboard" row.
-	--
-	-- Centre is both free and the project default for a new feature surface. The
-	-- legend ends at x=327 and the ammo/haul readouts start at x=1387, so the
-	-- middle of the bottom edge is the one uncontested strip down here.
-	--
-	-- (The medkit readout has the same collision with the legend, latent because
-	-- it only shows while you hold a charge. Not this feature's to move.)
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromOffset(320, 30)
-	label.Position = UDim2.new(0.5, 0, 1, -18)
-	label.AnchorPoint = Vector2.new(0.5, 1)
-	label.BackgroundTransparency = 1
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.TextColor3 = IDLE_COLOR
-	label.TextSize = 22
-	label.Font = Enum.Font.GothamBold
-	label.Text = ""
-	label.Visible = false
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Parent = label
+	-- The ride readout moved to the shared carried-kit strip (Features.Loadout,
+	-- declared in this feature's Loadout.luau). What stays here is the part that
+	-- is not a label: the rig's pose.
 
 	-- STOP THE LEGS. Roblox's default `Animate` script drives walk/run off
 	-- `Humanoid.MoveDirection`, and riding does not change that — so a rider
@@ -96,10 +71,7 @@ function SkateboardController.Start()
 			ridePose = nil
 		end
 
-		if not animator then
-			return
-		end
-		if not riding then
+		if not animator or not riding then
 			return
 		end
 
@@ -127,15 +99,7 @@ function SkateboardController.Start()
 	end
 
 	local function update()
-		local has = player:GetAttribute(Constants.HAS_ATTRIBUTE) == true
-		label.Visible = has
-		local riding = player:GetAttribute(Constants.RIDING_ATTRIBUTE) == true
-		setRidePose(riding)
-		if not has then
-			return
-		end
-		label.Text = if riding then "RIDING   [R] STEP OFF" else "SKATEBOARD   [R]"
-		label.TextColor3 = if riding then RIDING_COLOR else IDLE_COLOR
+		setRidePose(player:GetAttribute(Constants.RIDING_ATTRIBUTE) == true)
 	end
 
 	player:GetAttributeChangedSignal(Constants.HAS_ATTRIBUTE):Connect(update)
@@ -156,7 +120,7 @@ function SkateboardController.Start()
 	notice.Size = UDim2.fromOffset(420, 34)
 	-- Directly above the readout, clear of the pickup toast (which sits at
 	-- y = -70, 40 tall).
-	notice.Position = UDim2.new(0.5, 0, 1, -56)
+	notice.Position = UDim2.new(0.5, 0, 1, -206)
 	notice.AnchorPoint = Vector2.new(0.5, 1)
 	notice.BackgroundTransparency = 1
 	notice.TextColor3 = RIDING_COLOR
