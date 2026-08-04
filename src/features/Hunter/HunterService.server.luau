@@ -50,7 +50,11 @@ export type HunterKind = {
 	tint: Vector3,
 	scale: number,
 	eye: Color3,
-	dronePitch: number, -- PlaybackSpeed on the loop, so the three sound apart
+	-- PlaybackSpeed on the body drone loop, so kinds sound apart as they approach.
+	-- **nil means NO body sound at all** — the kind is silent until it does
+	-- something. One field rather than two: what configures the loop also decides
+	-- whether there is one.
+	dronePitch: number?,
 	-- Studs from the floor to the BOTTOM of the art. 0 (or nil) stands it on the
 	-- ground, which is right for anything with legs. A flier needs a real value:
 	-- nothing here animates, so a drone resting on the floor reads as broken,
@@ -122,7 +126,15 @@ local HUNTER_KINDS: { HunterKind } = {
 		tint = Vector3.new(0.5, 0.62, 0.5),
 		scale = 6,
 		eye = Color3.fromRGB(255, 170, 60),
-		dronePitch = 1.35,
+		-- SILENT until it sees you. It shared the ducks' approach loop, which made
+		-- the one enemy that is supposed to catch you unawares announce itself
+		-- from down the corridor exactly like they do.
+		--
+		-- Silence is also what gives its alarm meaning: the only noise a drone
+		-- ever makes is the sound of it reporting you, so hearing anything from a
+		-- drone IS the bad news. A duck you hear coming; a drone you hear only
+		-- once it is too late.
+		dronePitch = nil,
 		-- The Stray IS a drone, and it flies ABOVE the player rather than at them:
 		-- 4.5 studs to its underside clears a 5-stud character's head, so you look
 		-- up at it. At 2.5 it sat at chest height and read as hovering awkwardly
@@ -435,18 +447,22 @@ local function buildHunter(kind: HunterKind): Model
 		end
 	end
 
-	local sound = Instance.new("Sound")
-	sound.Name = "HunterDrone"
-	sound.SoundId = "rbxassetid://137974203982962" -- robot 1
-	sound.Looped = true
-	sound.Volume = 0.8
-	-- Pitched per kind, so you can hear WHICH one is near before you see it.
-	sound.PlaybackSpeed = kind.dronePitch
-	sound.RollOffMode = Enum.RollOffMode.InverseTapered
-	sound.RollOffMaxDistance = 170
-	sound.RollOffMinDistance = 10
-	sound.Parent = root
-	sound:Play()
+	-- The approach loop, and only for kinds that have one. A nil `dronePitch`
+	-- means the kind is silent until it acts.
+	if kind.dronePitch then
+		local sound = Instance.new("Sound")
+		sound.Name = "HunterDrone"
+		sound.SoundId = "rbxassetid://137974203982962" -- robot 1
+		sound.Looped = true
+		sound.Volume = 0.8
+		-- Pitched per kind, so you can hear WHICH one is near before you see it.
+		sound.PlaybackSpeed = kind.dronePitch
+		sound.RollOffMode = Enum.RollOffMode.InverseTapered
+		sound.RollOffMaxDistance = 170
+		sound.RollOffMinDistance = 10
+		sound.Parent = root
+		sound:Play()
+	end
 
 	-- Spotters carry a second sound: the alarm they run while reporting you.
 	-- Built here rather than on demand so it replicates with the model and is

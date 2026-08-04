@@ -28,7 +28,7 @@ Files:
 | Body | duck, scale 8 | duck, scale 7 | **art** (a drone) |
 | Attack | contact | contact | **spotter** |
 | Eyes | violet | red | amber |
-| Drone pitch | 0.7 | 1.0 | 1.35 |
+| Approach sound | drone loop, 0.7 | drone loop, 1.0 | **silent** |
 | Hover | grounded | grounded | 4.5 studs |
 
 **They share one AI.** What differs is what they can do, and the escalation is
@@ -50,8 +50,16 @@ type's character layers on top. It is applied alongside the per-hunter
 `SPEED_VARIANCE` jitter, which does a different job — that one strings a pack
 out, this one separates the kinds.
 
-**The drone is pitched per kind**, so you can hear *which* one is near before you
-see it.
+**The approach loop is pitched per kind**, so you can hear *which* one is near
+before you see it — but a `nil` `dronePitch` means **no body sound at all**, and
+the Stray has none.
+
+That is the point of it. The Stray shared the ducks' approach loop, which made
+the one enemy meant to catch you unawares announce itself down the corridor
+exactly like they do. Silence is also what gives its alarm meaning: the only
+noise a drone ever makes is the sound of it reporting you, so **hearing anything
+from a drone is already the bad news.** A duck you hear coming; a drone you hear
+only once it is too late.
 
 ### Home districts
 
