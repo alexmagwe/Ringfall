@@ -81,12 +81,14 @@ floor. Free-model vehicles are built around one, and this board *is* a Part and
 a VehicleSeat. `Disabled = true` rather than `:Destroy()`, because the seat here
 is half the deck's geometry. Applied in both clone paths.
 
-`DECK_LENGTH` is the one number that decides how big the board looks, and it was
-tuned by eye in **both** directions. 5 (the first pass) is as long as the rider
-is tall and reads as a surfboard. Real-world proportions say a bit under half
-the rider's height — 3.2 — and that looked like a toy under a Roblox character.
-Blocky avatars have wide feet and a wide stance, so the realistic number is the
-wrong one here. **4** is what sits right underneath one.
+`DECK_LENGTH` is the one number that decides how big the board looks, and it is
+**purely eye-tuned over four passes in both directions** — don't "correct" it
+back toward realism. 5 (the first pass) is as long as the rider is tall and
+reads as a surfboard. Real-world proportions say a bit under half the rider's
+height — 3.2 — and that looked like a toy. 4 was still small underfoot.
+**4.8** is where it sits right: about 0.8 of a character's height. Blocky avatars
+have wide feet, a wide stance and a low camera, and need more board than a
+person does.
 
 ## Where it rolls
 

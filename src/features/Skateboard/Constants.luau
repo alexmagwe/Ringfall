@@ -39,20 +39,20 @@ return {
 	TRIM_COLOR = Color3.fromRGB(235, 170, 60),
 
 	-- Nose-to-tail length in studs, and the ONE number that decides how big the
-	-- board looks. An R15 character measures about 5.5 studs, so this is roughly
-	-- 0.72 of the rider's height.
+	-- board looks. An R15 character measures about 5.9 studs, so this is roughly
+	-- 0.8 of the rider's height.
 	--
-	-- Tuned by eye, in both directions. The first pass was 5 — as long as the
-	-- rider is tall, which read as a surfboard. Real-world proportions say a bit
-	-- under half the rider's height, and 3.2 landed there and looked like a toy
-	-- under a Roblox character. Blocky avatars have wide feet and a wide stance,
-	-- so the realistic number is the wrong one here; 4 is what actually sits
-	-- right underneath one.
+	-- PURELY EYE-TUNED, and it took four passes in both directions, so do not
+	-- "correct" it back toward realism. Real-world proportions put a board a bit
+	-- under half its rider's height — that is 3.2 here, and it looked like a toy.
+	-- 5 (the first pass) was as long as the rider is tall and read as a
+	-- surfboard. 4 was still small underfoot. Blocky avatars have wide feet, a
+	-- wide stance and a low camera, and they need more board than a person does.
 	--
 	-- User art is SCALED TO THIS TOO (see SkateboardService.boardModel), so a
 	-- model authored at any size lands at the same footprint instead of the
 	-- feature's look depending on how someone happened to export it.
-	DECK_LENGTH = 4,
+	DECK_LENGTH = 4.8,
 
 	-- How often the server re-checks which district a rider is standing in.
 	-- Cheap but not free (a nearest-cell scan per rider), and a player crossing
