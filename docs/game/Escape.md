@@ -218,17 +218,6 @@ nothing from a finished round survives into the next one), plus
 **`HasCompass` is gone from this list** — the compass is standard equipment
 now, not a scavenged attribute; see [Salvage.md](Salvage.md#the-compass-is-standard-equipment).
 
-## Late joiners
-
-A player who joins (or respawns) while `RoundState == "Active"` is anchored
-in place the instant their character spawns, rather than being free to walk
-out through the (already-open) door mid-round — `onCharacterAdded` checks
-`workspace:GetAttribute("RoundState")` and anchors accordingly. They aren't
-explicitly unanchored anywhere else: the *next* round's `endRound` loop
-unconditionally unanchors and teleports **every** connected player, which
-naturally includes them the moment the current round ends. No separate
-"waiting room" state is needed.
-
 ## Packets (`Net.luau`, namespace `Maze`)
 
 | Packet | Direction | Payload | Purpose |
